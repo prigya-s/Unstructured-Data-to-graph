@@ -1,0 +1,27 @@
+# Payment Platform Documentation
+
+## Overview
+
+The Payment Platform is composed of the Checkout Service, the Payment Gateway
+API, and the Ledger Database.
+
+## Checkout Flow
+
+The Checkout Service uses the Payment Gateway API to authorize payments.
+The Checkout Service depends on the Inventory Service to confirm stock
+availability before checkout completes.
+
+## Data Storage
+
+The Ledger Database stores all financial transactions. The Ledger Database
+connects to the Analytics Database for nightly reporting.
+
+## Ownership
+
+The Payments Team owns the Checkout Service and the Payment Gateway API.
+The Platform Engineering Team owns the Ledger Database.
+
+## Compliance
+
+The Payment Platform implements the PCI Compliance Policy. The Checkout
+Service references the PCI Compliance Policy for audit purposes.

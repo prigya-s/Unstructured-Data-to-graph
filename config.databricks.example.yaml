@@ -1,0 +1,61 @@
+# Example config.yaml for a Databricks deployment. Not loaded by anything -
+# documentation of what the same file looks like in production. Copy to
+# config.yaml (or point KGLOCAL_CONFIG at a copy of this file) once the
+# corresponding provider classes (DatabricksVolumesProvider/UnityCatalogProvider/
+# ConfluenceSource/SharePointSource/DatabricksEmbeddingProvider/CosmosGraphProvider)
+# have real implementations - today they raise NotImplementedError.
+storage:
+  provider: unity_catalog  # or databricks_volumes
+  root: /Volumes/kg_catalog/kg_schema/lakehouse
+  unity_catalog:
+    host_env: DATABRICKS_SQL_HOST
+    http_path_env: DATABRICKS_SQL_HTTP_PATH
+    token_env: DATABRICKS_TOKEN
+    catalog: kg_catalog
+    schema: kg_schema
+
+document_source:
+  provider: confluence
+  confluence:
+    base_url_env: CONFLUENCE_BASE_URL
+    token_env: CONFLUENCE_API_TOKEN
+    space_key: ENG
+
+embedding:
+  provider: databricks
+  databricks:
+    host_env: DATABRICKS_HOST
+    token_env: DATABRICKS_TOKEN
+    endpoint_env: DATABRICKS_EMBEDDING_ENDPOINT
+    model_name: databricks-gte-large-en
+    batch_size: 64
+
+approval:
+  provider: ontobricks
+  ontobricks:
+    host_env: DATABRICKS_SQL_HOST
+    http_path_env: DATABRICKS_SQL_HTTP_PATH
+    token_env: DATABRICKS_TOKEN
+    catalog: kg_catalog
+    schema: kg_schema
+
+ontology:
+  provider: local
+  schema_path: ontology/ontology.yaml  # relative to src/
+
+graph:
+  provider: cosmos  # or neo4j (managed)
+  cosmos:
+    endpoint_env: COSMOS_ENDPOINT
+    key_env: COSMOS_KEY
+    database_env: COSMOS_DATABASE
+
+secrets:
+  provider: azure_key_vault  # Managed Identity via DefaultAzureCredential
+  vault_url: https://kg-local-prod.vault.azure.net/
+
+auth:
+  provider: azure_ad  # validates the identity Databricks Apps / an Azure AD auth proxy injects
+
+observability:
+  log_dir: /Volumes/kg_catalog/kg_schema/logs

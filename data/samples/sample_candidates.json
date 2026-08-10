@@ -1,0 +1,92 @@
+[
+  {
+    "id": "entity_system_core_banking_system",
+    "name": "Core Banking System",
+    "type": "System",
+    "source_chunk": "network_architecture_chunk_0001"
+  },
+  {
+    "id": "entity_database_customer_database",
+    "name": "Customer Database",
+    "type": "Database",
+    "source_chunk": "network_architecture_chunk_0001"
+  },
+  {
+    "id": "entity_service_payment_service",
+    "name": "Payment Service",
+    "type": "Service",
+    "source_chunk": "payment_platform_chunk_0001"
+  },
+  {
+    "id": "entity_api_payment_gateway_api",
+    "name": "Payment Gateway API",
+    "type": "API",
+    "source_chunk": "payment_platform_chunk_0001"
+  },
+  {
+    "id": "entity_service_fraud_detection_service",
+    "name": "Fraud Detection Service",
+    "type": "Service",
+    "source_chunk": "payment_platform_chunk_0002"
+  },
+  {
+    "id": "entity_service_legacy_reporting_service",
+    "name": "Legacy Reporting Service",
+    "type": "Service",
+    "source_chunk": "network_architecture_chunk_0002"
+  },
+  {
+    "id": "entity_database_analytics_database",
+    "name": "Analytics Database",
+    "type": "Database",
+    "source_chunk": "network_architecture_chunk_0002"
+  },
+  {
+    "id": "entity_team_data_engineering_team",
+    "name": "Data Engineering Team",
+    "type": "Team",
+    "source_chunk": "network_architecture_chunk_0002"
+  },
+  {
+    "id": "entity_team_payments_team",
+    "name": "Payments Team",
+    "type": "Team",
+    "source_chunk": "payment_platform_chunk_0001"
+  },
+  {
+    "id": "entity_policy_pci_compliance_policy",
+    "name": "PCI Compliance Policy",
+    "type": "Policy",
+    "source_chunk": "payment_platform_chunk_0003"
+  },
+  {
+    "id": "entity_policy_data_security_policy",
+    "name": "Data Security Policy",
+    "type": "Policy",
+    "source_chunk": "network_architecture_chunk_0003"
+  },
+  {
+    "id": "entity_team_security_team",
+    "name": "Security Team",
+    "type": "Team",
+    "source_chunk": "network_architecture_chunk_0003"
+  },
+  {
+    "id": "entity_database_ledger_database",
+    "name": "Ledger Database",
+    "type": "Database",
+    "source_chunk": "payment_platform_chunk_0002"
+  },
+  {
+    "id": "entity_service_checkout_service",
+    "name": "Checkout Service",
+    "type": "Service",
+    "source_chunk": "payment_platform_chunk_0001"
+  },
+  {
+    "id": "entity_technology_kubernetes",
+    "name": "Kubernetes",
+    "type": "Technology",
+    "source_chunk": "network_architecture_chunk_0001"
+  }
+]

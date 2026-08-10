@@ -1,0 +1,74 @@
+[
+  {
+    "source": "entity_system_core_banking_system",
+    "relationship": "USES",
+    "target": "entity_database_customer_database",
+    "source_chunk": "network_architecture_chunk_0001"
+  },
+  {
+    "source": "entity_service_payment_service",
+    "relationship": "CONNECTS_TO",
+    "target": "entity_api_payment_gateway_api",
+    "source_chunk": "payment_platform_chunk_0001"
+  },
+  {
+    "source": "entity_service_payment_service",
+    "relationship": "DEPENDS_ON",
+    "target": "entity_service_fraud_detection_service",
+    "source_chunk": "payment_platform_chunk_0002"
+  },
+  {
+    "source": "entity_service_checkout_service",
+    "relationship": "USES",
+    "target": "entity_service_payment_service",
+    "source_chunk": "payment_platform_chunk_0001"
+  },
+  {
+    "source": "entity_service_fraud_detection_service",
+    "relationship": "USES",
+    "target": "entity_database_ledger_database",
+    "source_chunk": "payment_platform_chunk_0002"
+  },
+  {
+    "source": "entity_team_payments_team",
+    "relationship": "OWNS",
+    "target": "entity_service_payment_service",
+    "source_chunk": "payment_platform_chunk_0001"
+  },
+  {
+    "source": "entity_service_legacy_reporting_service",
+    "relationship": "REFERENCES",
+    "target": "entity_database_customer_database",
+    "source_chunk": "network_architecture_chunk_0002"
+  },
+  {
+    "source": "entity_service_legacy_reporting_service",
+    "relationship": "DEPENDS_ON",
+    "target": "entity_database_analytics_database",
+    "source_chunk": "network_architecture_chunk_0002"
+  },
+  {
+    "source": "entity_team_data_engineering_team",
+    "relationship": "OWNS",
+    "target": "entity_database_analytics_database",
+    "source_chunk": "network_architecture_chunk_0002"
+  },
+  {
+    "source": "entity_team_security_team",
+    "relationship": "IMPLEMENTS",
+    "target": "entity_policy_data_security_policy",
+    "source_chunk": "network_architecture_chunk_0003"
+  },
+  {
+    "source": "entity_service_payment_service",
+    "relationship": "IMPLEMENTS",
+    "target": "entity_policy_pci_compliance_policy",
+    "source_chunk": "payment_platform_chunk_0003"
+  },
+  {
+    "source": "entity_system_core_banking_system",
+    "relationship": "CONTAINS",
+    "target": "entity_technology_kubernetes",
+    "source_chunk": "network_architecture_chunk_0001"
+  }
+]

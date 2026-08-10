@@ -1,0 +1,310 @@
+{
+  "entities": [
+    {
+      "id": "entity_system_core_banking_system",
+      "name": "Core Banking System",
+      "entity_type": "System",
+      "definition": "Core Banking System is the system of record that processes and tracks the organization's core financial transactions.",
+      "business_meaning": "The central platform that account balances, transfers, and statements ultimately depend on.",
+      "confidence_score": 0.9,
+      "status": "APPROVED",
+      "evidence": [
+        "The Core Banking System is the system of record for all customer account balances.",
+        "All downstream reporting pulls from the Core Banking System nightly batch."
+      ],
+      "source_documents": ["network_architecture.md"],
+      "source_chunks": ["network_architecture_chunk_0001"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:00:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-29T14:12:00+00:00", "reviewer": "demo_user", "action": "approve", "comment": "Confirmed with platform team - this is the correct definition."}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-29T14:12:00+00:00",
+      "merged_into": null
+    },
+    {
+      "id": "entity_database_customer_database",
+      "name": "Customer Database",
+      "entity_type": "Database",
+      "definition": "Customer Database stores customer profile, KYC, and contact information used across banking applications.",
+      "business_meaning": "The authoritative store of who our customers are.",
+      "confidence_score": 0.85,
+      "status": "APPROVED",
+      "evidence": [
+        "The Core Banking System uses the Customer Database to look up account holder details."
+      ],
+      "source_documents": ["network_architecture.md"],
+      "source_chunks": ["network_architecture_chunk_0001"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:00:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-29T14:15:00+00:00", "reviewer": "demo_user", "action": "approve", "comment": null}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-29T14:15:00+00:00",
+      "merged_into": null
+    },
+    {
+      "id": "entity_service_payment_service",
+      "name": "Payment Service",
+      "entity_type": "Service",
+      "definition": "Payment Service coordinates outbound and inbound payment processing for the payment platform.",
+      "business_meaning": "The service responsible for moving money between accounts and external payment networks.",
+      "confidence_score": 0.88,
+      "status": "APPROVED",
+      "evidence": [
+        "The Payment Service connects to the Payment Gateway API to submit outbound transfers.",
+        "The Payments Team owns the Payment Service."
+      ],
+      "source_documents": ["payment_platform.txt"],
+      "source_chunks": ["payment_platform_chunk_0001"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:05:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-30T10:00:00+00:00", "reviewer": "demo_user", "action": "merge", "comment": "Absorbed duplicate concept 'Payment Svc' from an older document naming convention."},
+        {"timestamp": "2026-07-30T10:05:00+00:00", "reviewer": "demo_user", "action": "approve", "comment": null}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-30T10:05:00+00:00",
+      "merged_into": null
+    },
+    {
+      "id": "entity_api_payment_gateway_api",
+      "name": "Payment Gateway API",
+      "entity_type": "API",
+      "definition": "Payment Gateway API is the external-facing interface used to submit and settle payment transactions.",
+      "business_meaning": "The door through which payment requests leave our systems and reach payment networks.",
+      "confidence_score": 0.82,
+      "status": "APPROVED",
+      "evidence": [
+        "The Payment Service connects to the Payment Gateway API to submit outbound transfers."
+      ],
+      "source_documents": ["payment_platform.txt"],
+      "source_chunks": ["payment_platform_chunk_0001"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:05:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-30T10:10:00+00:00", "reviewer": "demo_user", "action": "approve", "comment": null}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-30T10:10:00+00:00",
+      "merged_into": null
+    },
+    {
+      "id": "entity_service_payment_svc",
+      "name": "Payment Svc",
+      "entity_type": "Service",
+      "definition": "Payment Svc coordinates outbound and inbound payment processing for the payment platform.",
+      "business_meaning": "Older document naming for the same concept as Payment Service.",
+      "confidence_score": 0.4,
+      "status": "MERGED",
+      "evidence": [
+        "The Payment Svc connects to the payment gateway to submit outbound transfers."
+      ],
+      "source_documents": ["payment_platform_legacy.txt"],
+      "source_chunks": ["payment_platform_legacy_chunk_0001"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:06:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-30T10:00:00+00:00", "reviewer": "demo_user", "action": "merge", "comment": "Duplicate of Payment Service - merged into entity_service_payment_service."}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-30T10:00:00+00:00",
+      "merged_into": "entity_service_payment_service"
+    },
+    {
+      "id": "entity_service_legacy_reporting_service",
+      "name": "Legacy Reporting Service",
+      "entity_type": "Service",
+      "definition": "Legacy Reporting Service generated nightly regulatory reports from the analytics warehouse.",
+      "business_meaning": "An old reporting service scheduled for decommission.",
+      "confidence_score": 0.3,
+      "status": "REJECTED",
+      "evidence": [
+        "The Legacy Reporting Service references the Customer Database for account-level detail."
+      ],
+      "source_documents": ["network_architecture.md"],
+      "source_chunks": ["network_architecture_chunk_0002"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:07:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-30T11:00:00+00:00", "reviewer": "demo_user", "action": "reject", "comment": "This service was decommissioned last quarter - should not appear in the current ontology."}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-30T11:00:00+00:00",
+      "merged_into": null
+    },
+    {
+      "id": "entity_system_bank",
+      "name": "Bank",
+      "entity_type": "System",
+      "definition": "Bank is mentioned in source documents but its intended meaning has not yet been confirmed.",
+      "business_meaning": "Pending disambiguation.",
+      "confidence_score": 0.5,
+      "status": "PENDING_REVIEW",
+      "evidence": [
+        "Transfers are settled through the bank before funds are available to the customer.",
+        "The survey team noted erosion along the river bank near the data center site."
+      ],
+      "source_documents": ["payment_platform.txt", "network_architecture.md"],
+      "source_chunks": ["payment_platform_chunk_0004", "network_architecture_chunk_0004"],
+      "possible_meanings": ["Financial Institution", "River Bank"],
+      "history": [
+        {"timestamp": "2026-07-28T09:08:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction - term is ambiguous."}
+      ],
+      "reviewer": null,
+      "review_timestamp": null,
+      "merged_into": null
+    },
+    {
+      "id": "entity_team_payments_team",
+      "name": "Payments Team",
+      "entity_type": "Team",
+      "definition": "Payments Team is the team responsible for building and operating payment processing capabilities.",
+      "business_meaning": "The people accountable for the Payment Service and its uptime.",
+      "confidence_score": 0.7,
+      "status": "PENDING_REVIEW",
+      "evidence": [
+        "The Payments Team owns the Payment Service."
+      ],
+      "source_documents": ["payment_platform.txt"],
+      "source_chunks": ["payment_platform_chunk_0001"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:09:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."}
+      ],
+      "reviewer": null,
+      "review_timestamp": null,
+      "merged_into": null
+    },
+    {
+      "id": "entity_technology_kubernetes",
+      "name": "Kubernetes",
+      "entity_type": "Technology",
+      "definition": "Kubernetes is the container orchestration platform used to run banking services.",
+      "business_meaning": "The technology that keeps services running and scales them under load.",
+      "confidence_score": 0.6,
+      "status": "NEW",
+      "evidence": [
+        "The Core Banking System runs its services as containers orchestrated by Kubernetes."
+      ],
+      "source_documents": ["network_architecture.md"],
+      "source_chunks": ["network_architecture_chunk_0001"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:10:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."}
+      ],
+      "reviewer": null,
+      "review_timestamp": null,
+      "merged_into": null
+    },
+    {
+      "id": "entity_policy_pci_compliance_policy",
+      "name": "PCI Compliance Policy",
+      "entity_type": "Policy",
+      "definition": "PCI Compliance Policy defines the controls required to handle cardholder data safely.",
+      "business_meaning": "The rules the Payment Service must follow to stay compliant.",
+      "confidence_score": 0.55,
+      "status": "NEW",
+      "evidence": [
+        "The Payment Service implements the PCI Compliance Policy for cardholder data handling."
+      ],
+      "source_documents": ["payment_platform.txt"],
+      "source_chunks": ["payment_platform_chunk_0003"],
+      "possible_meanings": [],
+      "history": [
+        {"timestamp": "2026-07-28T09:11:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."}
+      ],
+      "reviewer": null,
+      "review_timestamp": null,
+      "merged_into": null
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel__entity_system_core_banking_system__USES__entity_database_customer_database",
+      "source_entity": "entity_system_core_banking_system",
+      "relationship_type": "USES",
+      "target_entity": "entity_database_customer_database",
+      "confidence_score": 0.87,
+      "status": "APPROVED",
+      "evidence": [
+        "The Core Banking System uses the Customer Database to look up account holder details."
+      ],
+      "history": [
+        {"timestamp": "2026-07-28T09:12:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-29T14:20:00+00:00", "reviewer": "demo_user", "action": "approve", "comment": null}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-29T14:20:00+00:00"
+    },
+    {
+      "id": "rel__entity_service_payment_service__CONNECTS_TO__entity_api_payment_gateway_api",
+      "source_entity": "entity_service_payment_service",
+      "relationship_type": "CONNECTS_TO",
+      "target_entity": "entity_api_payment_gateway_api",
+      "confidence_score": 0.85,
+      "status": "APPROVED",
+      "evidence": [
+        "The Payment Service connects to the Payment Gateway API to submit outbound transfers."
+      ],
+      "history": [
+        {"timestamp": "2026-07-28T09:13:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-30T10:20:00+00:00", "reviewer": "demo_user", "action": "approve", "comment": null}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-30T10:20:00+00:00"
+    },
+    {
+      "id": "rel__entity_service_payment_svc__DEPENDS_ON__entity_api_payment_gateway_api",
+      "source_entity": "entity_service_payment_svc",
+      "relationship_type": "DEPENDS_ON",
+      "target_entity": "entity_api_payment_gateway_api",
+      "confidence_score": 0.4,
+      "status": "APPROVED",
+      "evidence": [
+        "The Payment Svc connects to the payment gateway to submit outbound transfers."
+      ],
+      "history": [
+        {"timestamp": "2026-07-28T09:14:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction (legacy document, references the pre-merge 'Payment Svc' name)."},
+        {"timestamp": "2026-07-30T10:25:00+00:00", "reviewer": "demo_user", "action": "approve", "comment": "Approved so the merge-resolution rewrite to Payment Service can be demonstrated."}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-30T10:25:00+00:00"
+    },
+    {
+      "id": "rel__entity_team_payments_team__OWNS__entity_service_payment_service",
+      "source_entity": "entity_team_payments_team",
+      "relationship_type": "OWNS",
+      "target_entity": "entity_service_payment_service",
+      "confidence_score": 0.65,
+      "status": "PENDING_REVIEW",
+      "evidence": [
+        "The Payments Team owns the Payment Service."
+      ],
+      "history": [
+        {"timestamp": "2026-07-28T09:15:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."}
+      ],
+      "reviewer": null,
+      "review_timestamp": null
+    },
+    {
+      "id": "rel__entity_service_legacy_reporting_service__REFERENCES__entity_database_customer_database",
+      "source_entity": "entity_service_legacy_reporting_service",
+      "relationship_type": "REFERENCES",
+      "target_entity": "entity_database_customer_database",
+      "confidence_score": 0.3,
+      "status": "REJECTED",
+      "evidence": [
+        "The Legacy Reporting Service references the Customer Database for account-level detail."
+      ],
+      "history": [
+        {"timestamp": "2026-07-28T09:16:00+00:00", "reviewer": "system", "action": "created", "comment": "Candidate created from document extraction."},
+        {"timestamp": "2026-07-30T11:05:00+00:00", "reviewer": "demo_user", "action": "reject", "comment": "Source entity (Legacy Reporting Service) was rejected as decommissioned."}
+      ],
+      "reviewer": "demo_user",
+      "review_timestamp": "2026-07-30T11:05:00+00:00"
+    }
+  ]
+}

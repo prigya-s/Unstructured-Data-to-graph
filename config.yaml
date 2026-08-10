@@ -1,0 +1,61 @@
+# kg-local runtime configuration.
+#
+# Each section's own `provider` value is the only switch that matters -
+# nothing downstream of src/providers/__init__.py ever branches on
+# anything else. Switching to Databricks is a matter of changing the
+# provider values below (see config.databricks.example.yaml), not editing
+# code.
+storage:
+  provider: local  # local | databricks_volumes | unity_catalog
+  root: ./lakehouse
+  # unity_catalog:            # only read when provider: unity_catalog - see config.databricks.example.yaml
+  #   host_env: DATABRICKS_SQL_HOST
+  #   http_path_env: DATABRICKS_SQL_HTTP_PATH
+  #   token_env: DATABRICKS_TOKEN
+  #   catalog: kg_catalog
+  #   schema: kg_schema
+
+document_source:
+  provider: local_folder  # local_folder | confluence | sharepoint
+  local_folder:
+    path: ./docs
+
+embedding:
+  provider: local_noop  # local_noop | databricks
+  # databricks:               # only read when provider: databricks - see config.databricks.example.yaml
+  #   host_env: DATABRICKS_HOST
+  #   token_env: DATABRICKS_TOKEN
+  #   endpoint_env: DATABRICKS_EMBEDDING_ENDPOINT
+  #   model_name: databricks-gte-large-en
+  #   batch_size: 64
+
+approval:
+  provider: local  # local | ontobricks
+  # ontobricks:               # only read when provider: ontobricks - see config.databricks.example.yaml
+  #   host_env: DATABRICKS_SQL_HOST
+  #   http_path_env: DATABRICKS_SQL_HTTP_PATH
+  #   token_env: DATABRICKS_TOKEN
+  #   catalog: kg_catalog
+  #   schema: kg_schema
+
+ontology:
+  provider: local
+  schema_path: ontology/ontology.yaml  # relative to src/
+
+graph:
+  provider: neo4j  # neo4j | cosmos
+  neo4j:
+    uri_env: NEO4J_URI
+    user_env: NEO4J_USER
+    password_env: NEO4J_PASSWORD
+    database_env: NEO4J_DATABASE
+
+secrets:
+  provider: env  # env | azure_key_vault
+  # vault_url:                # only read when provider: azure_key_vault - see config.databricks.example.yaml
+
+auth:
+  provider: local  # local | azure_ad
+
+observability:
+  log_dir: ./logs

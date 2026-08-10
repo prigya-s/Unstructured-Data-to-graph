@@ -1,0 +1,139 @@
+# =====================================================================
+# Enterprise Knowledge Graph Ontology
+#
+# entity_types:  each type carries a list of "keywords". A candidate
+#   noun phrase extracted from text is classified as that type when
+#   its final token matches one of the keywords (case-insensitive).
+#
+# technology_gazetteer: known technology / platform names that are
+#   classified as Technology regardless of suffix (e.g. "Kubernetes",
+#   "PostgreSQL"). Matched as whole, case-insensitive tokens/phrases.
+#
+# relationship_types: each type carries a list of natural-language
+#   "triggers" used to detect that relationship between two entities
+#   mentioned in the same sentence.
+# =====================================================================
+
+entity_types:
+  Document:
+    keywords: []
+
+  Application:
+    keywords:
+      - application
+      - app
+      - portal
+      - platform
+
+  System:
+    keywords:
+      - system
+
+  Service:
+    keywords:
+      - service
+      - microservice
+
+  Database:
+    keywords:
+      - database
+      - db
+      - datastore
+      - store
+
+  API:
+    keywords:
+      - api
+      - endpoint
+      - gateway
+
+  Process:
+    keywords:
+      - process
+      - workflow
+      - pipeline
+
+  Team:
+    keywords:
+      - team
+      - squad
+      - department
+
+  Technology:
+    keywords:
+      - framework
+      - language
+      - protocol
+
+  Policy:
+    keywords:
+      - policy
+      - standard
+      - guideline
+      - compliance
+
+technology_gazetteer:
+  - Kubernetes
+  - Docker
+  - PostgreSQL
+  - MySQL
+  - MongoDB
+  - Redis
+  - Kafka
+  - Java
+  - Python
+  - Node.js
+  - React
+  - GraphQL
+  - gRPC
+  - AWS
+  - Azure
+  - GCP
+  - OAuth2
+  - TensorFlow
+  - Terraform
+  - Linux
+
+relationship_types:
+  USES:
+    triggers:
+      - uses
+      - utilizes
+      - leverages
+      - relies on
+
+  DEPENDS_ON:
+    triggers:
+      - depends on
+      - is dependent on
+      - requires
+
+  CONNECTS_TO:
+    triggers:
+      - connects to
+      - integrates with
+      - communicates with
+
+  OWNS:
+    triggers:
+      - owns
+      - is responsible for
+      - maintains
+
+  CONTAINS:
+    triggers:
+      - contains
+      - includes
+      - comprises
+
+  IMPLEMENTS:
+    triggers:
+      - implements
+      - adheres to
+      - follows
+
+  REFERENCES:
+    triggers:
+      - references
+      - refers to
+      - cites

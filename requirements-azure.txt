@@ -1,0 +1,8 @@
+# Optional dependencies for Azure-backed providers only.
+# Install on top of requirements.txt when secrets.provider: azure_key_vault
+# and/or auth.provider: azure_ad. Not needed for local dev - the
+# azure-identity/azure-keyvault-secrets imports in
+# src/providers/secrets_provider.py are deferred until
+# AzureKeyVaultSecretsProvider actually connects.
+azure-identity>=1.17.0
+azure-keyvault-secrets>=4.8.0
