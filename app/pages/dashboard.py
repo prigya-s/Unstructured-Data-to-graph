@@ -16,14 +16,14 @@ source_documents = {doc for e in entities for doc in e.source_documents}
 st.subheader("Overview")
 cols = st.columns(3)
 cols[0].metric("Documents Processed", len(source_documents))
-cols[1].metric("Candidate Business Concepts", len(entities))
+cols[1].metric("Candidate Entities", len(entities))
 cols[2].metric("Candidate Relationships", len(relationships))
 
 cols = st.columns(3)
-cols[0].metric("Approved Concepts", sum(1 for e in entities if e.status == WorkflowStatus.APPROVED))
+cols[0].metric("Approved Entities", sum(1 for e in entities if e.status == WorkflowStatus.APPROVED))
 cols[1].metric("Approved Relationships", sum(1 for r in relationships if r.status == WorkflowStatus.APPROVED))
 cols[2].metric(
-    "Rejected Concepts",
+    "Rejected Entities",
     sum(1 for e in entities if e.status == WorkflowStatus.REJECTED)
     + sum(1 for r in relationships if r.status == WorkflowStatus.REJECTED),
 )
@@ -35,11 +35,11 @@ pending_ambiguous = [
 ]
 if pending_ambiguous:
     st.warning(
-        f"{len(pending_ambiguous)} concept(s) have more than one possible meaning and need "
+        f"{len(pending_ambiguous)} entity(ies) have more than one possible meaning and need "
         "attention on the Ambiguity Resolution page."
     )
 
-st.subheader("Concepts by Category and Status")
+st.subheader("Entities by Category and Status")
 if entities:
     categories = sorted({e.entity_type for e in entities})
     rows = []
@@ -52,7 +52,7 @@ if entities:
         rows.append(row)
     st.dataframe(rows, use_container_width=True, hide_index=True)
 else:
-    st.info("No candidate concepts yet. Run `python src/main.py ingest ./docs` first.")
+    st.info("No candidate entities yet. Run `python src/main.py ingest ./docs` first.")
 
 st.subheader("Recent Activity")
 history_rows = []
@@ -61,7 +61,7 @@ for entity in entities:
         history_rows.append(
             {
                 "Timestamp": entry.timestamp,
-                "Concept/Relationship": entity.name,
+                "Entity/Relationship": entity.name,
                 "Action": entry.action,
                 "Reviewer": entry.reviewer,
                 "Comment": entry.comment or "",
@@ -72,7 +72,7 @@ for rel in relationships:
         history_rows.append(
             {
                 "Timestamp": entry.timestamp,
-                "Concept/Relationship": f"{rel.source_entity} -> {rel.target_entity}",
+                "Entity/Relationship": f"{rel.source_entity} -> {rel.target_entity}",
                 "Action": entry.action,
                 "Reviewer": entry.reviewer,
                 "Comment": entry.comment or "",

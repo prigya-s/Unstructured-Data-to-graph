@@ -41,11 +41,20 @@ def extract_relationships_from_chunk(
 ) -> list[dict]:
     """entities_in_chunk: entities (with id/name/type) known to be mentioned
     in this chunk. Returns [{"source", "relationship", "target", "source_chunk"}].
-    """
+    Standalone convenience wrapper - rebuilds the ontology-derived trigger
+    list on every call (see extract_relationships, which builds it once and
+    reuses it across chunks)."""
+    return _extract_from_chunk(chunk, entities_in_chunk, _build_relationship_triggers(ontology))
+
+
+def _extract_from_chunk(
+    chunk: dict,
+    entities_in_chunk: list[dict],
+    triggers: list[tuple[str, str]],
+) -> list[dict]:
     if len(entities_in_chunk) < 2:
         return []
 
-    triggers = _build_relationship_triggers(ontology)
     results: list[dict] = []
     seen: set[tuple[str, str, str]] = set()
 
@@ -118,12 +127,13 @@ def extract_relationships(
             entity_by_id[mention["entity_id"]]
         )
 
+    triggers = _build_relationship_triggers(ontology)
     all_relationships: list[dict] = []
     seen_global: set[tuple[str, str, str]] = set()
 
     for chunk in chunks:
         chunk_entities = entities_per_chunk.get(chunk["chunk_id"], [])
-        relationships = extract_relationships_from_chunk(chunk, chunk_entities, ontology)
+        relationships = _extract_from_chunk(chunk, chunk_entities, triggers)
         for rel in relationships:
             key = (rel["source"], rel["relationship"], rel["target"])
             if key in seen_global:

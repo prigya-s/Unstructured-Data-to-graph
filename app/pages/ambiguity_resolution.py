@@ -7,7 +7,7 @@ from review import WorkflowStatus
 
 st.title("Ambiguity Resolution")
 st.caption(
-    "Some business terms can mean more than one thing. Pick the meaning that applies here so "
+    "Some entities can mean more than one thing. Pick the meaning that applies here so "
     "reviewers downstream see the right definition."
 )
 
@@ -23,7 +23,7 @@ ambiguous = [
 ]
 
 if not ambiguous:
-    st.success("No ambiguous concepts require resolution right now.")
+    st.success("No ambiguous entities require resolution right now.")
 
 for entity in ambiguous:
     with st.container(border=True):
@@ -65,5 +65,5 @@ for entity in ambiguous:
                 st.rerun()
 
         st.caption(
-            "Confirming a meaning does not approve this concept - go to Business Concepts to approve or reject it."
+            "Confirming a meaning does not approve this entity - go to Entity Review to approve or reject it."
         )

@@ -18,6 +18,7 @@ from .auth_provider import AuthProvider, get_auth_provider
 from .document_source import DocumentSource
 from .embedding_provider import EmbeddingProvider
 from .graph_provider import GraphProvider
+from .llm_provider import LLMProvider
 from .ontology_provider import OntologyProvider
 from .secrets_provider import SecretsProvider, get_secrets_provider
 from .storage_provider import StorageProvider
@@ -68,7 +69,11 @@ def get_embedding_provider(config: AppConfig) -> EmbeddingProvider:
         from .databricks_embedding_provider import DatabricksEmbeddingProvider
 
         return DatabricksEmbeddingProvider(config)
-    raise ValueError(f"Unknown embedding.provider '{provider}'. Valid values: local_noop, databricks.")
+    if provider == "azure_openai":
+        from .azure_openai_embedding_provider import AzureOpenAIEmbeddingProvider
+
+        return AzureOpenAIEmbeddingProvider(config)
+    raise ValueError(f"Unknown embedding.provider '{provider}'. Valid values: local_noop, databricks, azure_openai.")
 
 
 def get_ontology_provider(config: AppConfig) -> OntologyProvider:
@@ -93,6 +98,15 @@ def get_graph_provider(config: AppConfig) -> GraphProvider:
     raise ValueError(f"Unknown graph.provider '{provider}'. Valid values: neo4j, cosmos.")
 
 
+def get_llm_provider(config: AppConfig) -> LLMProvider:
+    provider = config.llm.provider
+    if provider == "azure_openai":
+        from .azure_openai_llm_provider import AzureOpenAIChatLLMProvider
+
+        return AzureOpenAIChatLLMProvider(config)
+    raise ValueError(f"Unknown llm.provider '{provider}'. Valid values: azure_openai.")
+
+
 __all__ = [
     "StorageProvider",
     "DocumentSource",
@@ -102,6 +116,7 @@ __all__ = [
     "GraphProvider",
     "SecretsProvider",
     "AuthProvider",
+    "LLMProvider",
     "get_storage_provider",
     "get_document_source",
     "get_embedding_provider",
@@ -110,4 +125,5 @@ __all__ = [
     "get_graph_provider",
     "get_secrets_provider",
     "get_auth_provider",
+    "get_llm_provider",
 ]

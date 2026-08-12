@@ -40,6 +40,7 @@ class PipelineContext:
     relationships: list = field(default_factory=list)
     entities_saved: int = 0
     relationships_saved: int = 0
+    candidate_graph: dict | None = None
     ontology_result: dict | None = None
     graph_export: dict | None = None
     publish_stats: dict = field(default_factory=dict)

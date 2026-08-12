@@ -38,10 +38,41 @@ class Neo4jGraphProvider(GraphProvider):
                 f"Neo4j connection is missing required secret(s): {', '.join(missing)}. "
                 "Check graph.neo4j.*_env in config.yaml and that secrets.provider can resolve them."
             )
+        self._loader: Neo4jLoader | None = None
+
+    def _get_loader(self) -> Neo4jLoader:
+        """Lazily builds one Neo4jLoader (and its underlying driver/connection
+        pool) and reuses it across every method call on this provider
+        instance, instead of opening a fresh driver/TLS/auth handshake per
+        call - the driver itself is thread-safe and already pools
+        connections internally."""
+        if self._loader is None:
+            self._loader = Neo4jLoader(
+                uri=self.uri, user=self.user, password=self.password, database=self.database
+            )
+        return self._loader
+
+    def close(self) -> None:
+        if self._loader is not None:
+            self._loader.close()
+            self._loader = None
 
     def publish(self, graph: dict) -> dict:
-        with Neo4jLoader(
-            uri=self.uri, user=self.user, password=self.password, database=self.database
-        ) as loader:
-            loader.verify_connectivity()
-            return loader.load_graph(graph)
+        loader = self._get_loader()
+        loader.verify_connectivity()
+        return loader.load_graph(graph)
+
+    def search_chunks(self, query_vector: list[float], top_k: int) -> list[dict]:
+        loader = self._get_loader()
+        with loader._driver.session(database=loader.database) as session:
+            return loader.search_chunks(session, query_vector, top_k)
+
+    def get_mentioned_entities(self, chunk_ids: list[str]) -> list[dict]:
+        loader = self._get_loader()
+        with loader._driver.session(database=loader.database) as session:
+            return loader.get_mentioned_entities(session, chunk_ids)
+
+    def get_neighbors(self, entity_ids: list[str], hops: int, limit: int) -> dict:
+        loader = self._get_loader()
+        with loader._driver.session(database=loader.database) as session:
+            return loader.get_neighbors(session, entity_ids, hops, limit)

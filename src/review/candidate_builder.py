@@ -1,5 +1,5 @@
 """
-Candidate Business Concepts stage.
+Candidate Entity stage.
 
 Converts the raw, deterministic output of entity_extractor/relationship_extractor
 (dumb dicts keyed by id, no business framing) into reviewable
@@ -65,19 +65,20 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _count_mentions(entity_id: str, mentions: list[dict]) -> int:
-    return sum(1 for m in mentions if m["entity_id"] == entity_id)
+def _group_mentions_by_entity(mentions: list[dict]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for mention in mentions:
+        grouped.setdefault(mention["entity_id"], []).append(mention)
+    return grouped
 
 
 def _compute_confidence(mention_count: int) -> float:
     return round(min(1.0, mention_count / 10.0), 2)
 
 
-def _gather_evidence(entity_id: str, mentions: list[dict], chunks_by_id: dict[str, dict]) -> list[str]:
+def _gather_evidence(entity_mentions: list[dict], chunks_by_id: dict[str, dict]) -> list[str]:
     snippets: list[str] = []
-    for mention in mentions:
-        if mention["entity_id"] != entity_id:
-            continue
+    for mention in entity_mentions:
         chunk = chunks_by_id.get(mention["chunk_id"])
         if not chunk:
             continue
@@ -90,19 +91,17 @@ def _gather_evidence(entity_id: str, mentions: list[dict], chunks_by_id: dict[st
     return snippets
 
 
-def _gather_source_documents(entity_id: str, mentions: list[dict], chunks_by_id: dict[str, dict]) -> list[str]:
+def _gather_source_documents(entity_mentions: list[dict], chunks_by_id: dict[str, dict]) -> list[str]:
     docs: list[str] = []
-    for mention in mentions:
-        if mention["entity_id"] != entity_id:
-            continue
+    for mention in entity_mentions:
         chunk = chunks_by_id.get(mention["chunk_id"])
         if chunk and chunk["document"] not in docs:
             docs.append(chunk["document"])
     return docs
 
 
-def _gather_source_chunks(entity_id: str, mentions: list[dict]) -> list[str]:
-    return [m["chunk_id"] for m in mentions if m["entity_id"] == entity_id]
+def _gather_source_chunks(entity_mentions: list[dict]) -> list[str]:
+    return [m["chunk_id"] for m in entity_mentions]
 
 
 def _make_history_entry(action: str, comment: str) -> HistoryEntry:
@@ -125,6 +124,7 @@ def build_candidates(
     actually written (decided rows that were preserved are not counted).
     """
     chunks_by_id = {c["chunk_id"]: c for c in chunks}
+    mentions_by_entity = _group_mentions_by_entity(mentions)
 
     existing_entities = {e.id: e.status for e in repository.get_candidate_entities()}
     entity_confidence: dict[str, float] = {}
@@ -132,7 +132,8 @@ def build_candidates(
     entities_to_save: list[CandidateEntity] = []
     for raw in entities:
         entity_id = raw["id"]
-        mention_count = _count_mentions(entity_id, mentions)
+        entity_mentions = mentions_by_entity.get(entity_id, [])
+        mention_count = len(entity_mentions)
         confidence = _compute_confidence(mention_count)
         entity_confidence[entity_id] = confidence
 
@@ -153,9 +154,9 @@ def build_candidates(
             business_meaning=BUSINESS_MEANING_TEMPLATES.get(entity_type, _DEFAULT_BUSINESS_MEANING),
             confidence_score=confidence,
             status=status,
-            evidence=_gather_evidence(entity_id, mentions, chunks_by_id),
-            source_documents=_gather_source_documents(entity_id, mentions, chunks_by_id),
-            source_chunks=_gather_source_chunks(entity_id, mentions),
+            evidence=_gather_evidence(entity_mentions, chunks_by_id),
+            source_documents=_gather_source_documents(entity_mentions, chunks_by_id),
+            source_chunks=_gather_source_chunks(entity_mentions),
             possible_meanings=possible_meanings,
             history=[
                 _make_history_entry(

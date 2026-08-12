@@ -72,11 +72,14 @@ def _classify(phrase: str, suffix_map: dict[str, str], gazetteer: set[str]) -> s
 def extract_entities_from_chunk(chunk: dict, ontology: dict) -> list[dict]:
     """Return raw (non-deduplicated) entity mentions found in a single chunk.
 
-    Each item: {"name", "type", "source_chunk"}.
-    """
-    suffix_map = _build_suffix_map(ontology)
-    gazetteer = _build_gazetteer(ontology)
+    Each item: {"name", "type", "source_chunk"}. Standalone convenience
+    wrapper - rebuilds the ontology-derived lookup structures on every call,
+    which is fine for a single chunk but wasteful across many (see
+    extract_entities, which builds them once and reuses them)."""
+    return _extract_from_chunk(chunk, _build_suffix_map(ontology), _build_gazetteer(ontology))
 
+
+def _extract_from_chunk(chunk: dict, suffix_map: dict[str, str], gazetteer: set[str]) -> list[dict]:
     found: list[dict] = []
     seen_in_chunk: set[tuple[str, str]] = set()
 
@@ -113,12 +116,15 @@ def extract_entities(chunks: list[dict], ontology: dict) -> tuple[list[dict], li
       mentions: [{"chunk_id", "entity_id"}] one row per (chunk, entity)
                 pair, including every chunk an entity appears in.
     """
+    suffix_map = _build_suffix_map(ontology)
+    gazetteer = _build_gazetteer(ontology)
+
     entities_by_key: dict[tuple[str, str], dict] = {}
     mentions: list[dict] = []
     mention_keys: set[tuple[str, str]] = set()
 
     for chunk in chunks:
-        raw_entities = extract_entities_from_chunk(chunk, ontology)
+        raw_entities = _extract_from_chunk(chunk, suffix_map, gazetteer)
         for raw in raw_entities:
             key = (raw["name"].lower(), raw["type"])
             if key not in entities_by_key:

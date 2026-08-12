@@ -55,12 +55,22 @@ class AzureKeyVaultSecretsProvider(SecretsProvider):
         return self._client
 
     def get(self, name: str) -> str | None:
-        from azure.core.exceptions import ResourceNotFoundError
+        from azure.core.exceptions import ClientAuthenticationError, HttpResponseError, ResourceNotFoundError
 
         try:
             return self._connect().get_secret(name).value
         except ResourceNotFoundError:
             return None
+        except (ClientAuthenticationError, HttpResponseError) as exc:
+            # Auth failures and throttling (e.g. 429) are operational errors,
+            # not "secret doesn't exist" - don't swallow them as None, and
+            # don't let the raw Azure SDK exception (which can embed the
+            # vault URL) propagate to a caller that might display it.
+            raise RuntimeError(
+                f"Failed to read secret '{name}' from Azure Key Vault due to an authentication "
+                "or service error. Check Managed Identity/credential configuration and Key Vault "
+                "availability."
+            ) from exc
 
 
 def get_secrets_provider(config: AppConfig) -> SecretsProvider:

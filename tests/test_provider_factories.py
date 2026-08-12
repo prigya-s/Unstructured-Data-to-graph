@@ -15,11 +15,14 @@ from config.app_config import (
     DocumentSourceConfig,
     EmbeddingConfig,
     GraphConfig,
+    LLMConfig,
     OntologyConfig,
     SecretsConfig,
     StorageConfig,
 )
 from providers.auth_provider import AzureADAuthProvider, LocalAuthProvider, get_auth_provider
+from providers.azure_openai_embedding_provider import AzureOpenAIEmbeddingProvider
+from providers.azure_openai_llm_provider import AzureOpenAIChatLLMProvider
 from providers.local_embedding_provider import LocalEmbeddingProvider
 from providers.local_folder_source import LocalFolderSource
 from providers.local_ontology_provider import LocalOntologyProvider
@@ -70,6 +73,21 @@ def test_embedding_provider_unknown_raises(tmp_path):
         providers.get_embedding_provider(config)
 
 
+def test_embedding_provider_azure_openai(tmp_path, monkeypatch):
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test-key")
+    config = _config(tmp_path, embedding=EmbeddingConfig(provider="azure_openai"))
+    assert isinstance(providers.get_embedding_provider(config), AzureOpenAIEmbeddingProvider)
+
+
+def test_embedding_provider_azure_openai_missing_secrets_raises(tmp_path, monkeypatch):
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    config = _config(tmp_path, embedding=EmbeddingConfig(provider="azure_openai"))
+    with pytest.raises(ValueError):
+        providers.get_embedding_provider(config)
+
+
 def test_approval_provider_local(tmp_path):
     assert isinstance(providers.get_approval_provider(_config(tmp_path)), LocalOntologyRepository)
 
@@ -109,6 +127,25 @@ def test_graph_provider_unknown_raises(tmp_path):
     config = _config(tmp_path, graph=GraphConfig(provider="bogus"))
     with pytest.raises(ValueError):
         providers.get_graph_provider(config)
+
+
+def test_llm_provider_azure_openai(tmp_path, monkeypatch):
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test-key")
+    assert isinstance(providers.get_llm_provider(_config(tmp_path)), AzureOpenAIChatLLMProvider)
+
+
+def test_llm_provider_azure_openai_missing_secrets_raises(tmp_path, monkeypatch):
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    with pytest.raises(ValueError):
+        providers.get_llm_provider(_config(tmp_path))
+
+
+def test_llm_provider_unknown_raises(tmp_path):
+    config = _config(tmp_path, llm=LLMConfig(provider="bogus"))
+    with pytest.raises(ValueError):
+        providers.get_llm_provider(config)
 
 
 def test_secrets_provider_env(tmp_path):

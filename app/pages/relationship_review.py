@@ -2,11 +2,22 @@ from __future__ import annotations
 
 import streamlit as st
 
-from common import add_history, entity_display_name, format_confidence, get_repo, now_iso, reviewer_name, status_label
+from common import (
+    add_history,
+    entity_display_name,
+    format_confidence,
+    get_logger,
+    get_repo,
+    now_iso,
+    reviewer_name,
+    status_label,
+)
 from review import WorkflowStatus
 
+logger = get_logger()
+
 st.title("Relationships")
-st.caption("Review how business concepts relate to each other, e.g. one service depending on another.")
+st.caption("Review how entities relate to each other, e.g. one service depending on another.")
 
 repo = get_repo()
 reviewer = reviewer_name()
@@ -69,7 +80,7 @@ for rel in filtered:
             ):
                 st.warning(
                     "This relationship is approved but will not be published yet - both "
-                    f"'{source_name}' and '{target_name}' must also be approved business concepts."
+                    f"'{source_name}' and '{target_name}' must also be approved entities."
                 )
 
         with right:
@@ -91,6 +102,7 @@ for rel in filtered:
                     rel.review_timestamp = now_iso()
                     add_history(rel, reviewer, "approve", comment or None)
                     repo.save_candidate_relationship(rel)
+                    logger.info("Relationship %s approved by %s", rel.id, reviewer)
                     st.rerun()
 
             if rel.status != WorkflowStatus.REJECTED:
@@ -100,6 +112,7 @@ for rel in filtered:
                     rel.review_timestamp = now_iso()
                     add_history(rel, reviewer, "reject", comment or None)
                     repo.save_candidate_relationship(rel)
+                    logger.info("Relationship %s rejected by %s", rel.id, reviewer)
                     st.rerun()
 
             if rel.history:

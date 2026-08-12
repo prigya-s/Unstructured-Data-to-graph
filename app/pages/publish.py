@@ -3,13 +3,15 @@ from __future__ import annotations
 import streamlit as st
 
 import providers
-from common import get_repo
+from common import get_logger, get_repo, reviewer_name
 from config import load_config
 from pipeline.context import PipelineContext
 from pipeline.runner import PipelineRunner
 from pipeline.stages.graph_stage import GraphStage
 from pipeline.stages.ontology_stage import OntologyStage
 from review import WorkflowStatus
+
+logger = get_logger()
 
 _RUNNER = PipelineRunner([OntologyStage(), GraphStage()])
 
@@ -27,7 +29,7 @@ def _build_context() -> PipelineContext:
     )
 
 st.title("Publish")
-st.caption("Only approved concepts and relationships are ever published. Rejected, pending, or ambiguous concepts are never included.")
+st.caption("Only approved entities and relationships are ever published. Rejected, pending, or ambiguous entities are never included.")
 
 repo = get_repo()
 entities = repo.get_candidate_entities()
@@ -41,13 +43,13 @@ pending_relationships = sum(
 )
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Approved Concepts", approved_entities)
+col1.metric("Approved Entities", approved_entities)
 col2.metric("Approved Relationships", approved_relationships)
 col3.metric("Still Pending", pending_entities + pending_relationships)
 
 if pending_entities or pending_relationships:
     st.warning(
-        f"{pending_entities} concept(s) and {pending_relationships} relationship(s) are still "
+        f"{pending_entities} entity(ies) and {pending_relationships} relationship(s) are still "
         "pending review. Publishing will only include approved items."
     )
 
@@ -59,8 +61,14 @@ if st.button("Generate Approved Ontology"):
         ctx = _RUNNER.run_stage("ontology", _build_context())
         ontology = ctx.ontology_result
         st.success(
-            f"Ontology generated with {ontology['stats']['total_entities']} concepts and "
+            f"Ontology generated with {ontology['stats']['total_entities']} entities and "
             f"{ontology['stats']['total_relationships']} relationships."
+        )
+        logger.info(
+            "Ontology published by %s: %d entities, %d relationships",
+            reviewer_name(),
+            ontology["stats"]["total_entities"],
+            ontology["stats"]["total_relationships"],
         )
     except ValueError as exc:
         st.error(str(exc))
@@ -68,7 +76,7 @@ if st.button("Generate Approved Ontology"):
 st.divider()
 st.subheader("Step 2: Publish to Neo4j")
 st.caption(
-    "Loads only approved concepts and relationships into the graph database. Previously "
+    "Loads only approved entities and relationships into the graph database. Previously "
     "published items are updated in place - safe to run more than once."
 )
 if st.button("Generate Neo4j Graph", type="primary"):
@@ -76,13 +84,20 @@ if st.button("Generate Neo4j Graph", type="primary"):
         ctx = _RUNNER.run_stage("graph", _build_context())
         stats = ctx.publish_stats
         st.success(
-            f"Published {stats['entities_loaded']} concepts and "
+            f"Published {stats['entities_loaded']} entities and "
             f"{stats['relationships_loaded']} relationships to Neo4j."
+        )
+        logger.info(
+            "Graph published to Neo4j by %s: %d nodes, %d relationships",
+            reviewer_name(),
+            stats["nodes_loaded"],
+            stats["relationships_loaded"],
         )
     except ValueError as exc:
         st.error(str(exc))
-    except Exception as exc:  # noqa: BLE001 - surface connection errors as a friendly message
+    except Exception:  # noqa: BLE001 - surface connection errors as a friendly message
+        logger.exception("Publish to Neo4j failed")
         st.error(
             "Could not publish to Neo4j. Ensure Neo4j Desktop is running and check the "
-            f"credentials in your .env file. Details: {exc}"
+            "credentials in your .env file, or check the log file for details."
         )

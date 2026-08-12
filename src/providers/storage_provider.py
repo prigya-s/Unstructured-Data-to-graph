@@ -46,6 +46,10 @@ class StorageProvider(ABC):
         ...
 
     # -- gold -----------------------------------------------------------------
+    # write_entities/write_relationships hold raw, pre-review extraction
+    # output - not yet Silver candidates or Gold approved content. They
+    # become Silver once run through review.candidate_builder.build_candidates()
+    # into the ApprovalProvider.
     @abstractmethod
     def write_entities(self, entities: list[dict], mentions: list[dict]) -> None:
         """CandidateEntityRecord-shaped raw entities plus their chunk mentions."""
@@ -88,9 +92,22 @@ class StorageProvider(ABC):
 
     @abstractmethod
     def write_graph_export(self, record: dict) -> None:
-        """graph_builder.build_graph() output, persisted for auditability
-        before it is loaded into a GraphProvider."""
+        """Gold-layer Production Graph: graph_builder.build_graph() output
+        over approved-only content, persisted for auditability before it is
+        loaded into a GraphProvider (Neo4j/Cosmos)."""
 
     @abstractmethod
     def read_graph_export(self) -> dict | None:
+        ...
+
+    # -- silver: candidate graph -----------------------------------------------
+    @abstractmethod
+    def write_candidate_graph(self, record: dict) -> None:
+        """Silver-layer Candidate Graph: graph_builder.build_graph() output
+        over the full candidate set (pending + approved, merges resolved) -
+        the graph as currently understood by the extraction/review engine,
+        not yet gated on approval. Never loaded into a GraphProvider."""
+
+    @abstractmethod
+    def read_candidate_graph(self) -> dict | None:
         ...

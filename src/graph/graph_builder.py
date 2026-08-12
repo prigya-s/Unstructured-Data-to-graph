@@ -17,7 +17,8 @@ def build_graph(
     relationships: list[dict],
 ) -> dict:
     """documents: [{"document_id","document_name","source_path","markdown_path"}]
-    chunks: [{"chunk_id","document","section_path","content","token_count"}]
+    chunks: [{"chunk_id","document","section_path","content","token_count",
+              "embedding" (optional, list[float] | None)}]
     entities: [{"id","name","type","source_chunk"}]
     mentions: [{"chunk_id","entity_id"}]
     relationships: [{"source","relationship","target","source_chunk"}]
@@ -39,6 +40,7 @@ def build_graph(
             "section_path": chunk["section_path"],
             "content": chunk["content"],
             "token_count": chunk["token_count"],
+            "embedding": chunk.get("embedding"),
         }
         for chunk in chunks
     ]

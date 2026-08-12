@@ -3,7 +3,7 @@ CLI entry point for the local Knowledge Graph pipeline.
 
 Thin orchestration only: load config.yaml -> AppConfig, build the six
 providers via src/providers/__init__.py factories, build a PipelineRunner
-over the nine stages, and dispatch to the same CLI surface as before this
+over the ten stages, and dispatch to the same CLI surface as before this
 refactor. No function here computes a Path from a project root except
 through AppConfig/StorageProvider - see
 src/providers/local_storage_provider.py for the one place bronze/silver/gold
@@ -11,17 +11,18 @@ paths actually get built.
 
 Usage:
     python src/main.py ingest ./docs
+    python src/main.py candidate-graph
     python src/main.py publish-ontology
     python src/main.py publish-graph
+    python src/main.py chat
 """
 
 from __future__ import annotations
 
 import argparse
-import json
+import asyncio
 import logging
 import sys
-import time
 import uuid
 from pathlib import Path
 
@@ -36,9 +37,11 @@ sys.path.insert(0, str(SRC_DIR))
 import providers  # noqa: E402
 from config import load_config  # noqa: E402
 from config.app_config import AppConfig  # noqa: E402
+from observability.logging_setup import setup_logging  # noqa: E402
 from pipeline.context import PipelineContext  # noqa: E402
 from pipeline.runner import PipelineRunner  # noqa: E402
 from pipeline.stages.approval_stage import ApprovalStage  # noqa: E402
+from pipeline.stages.candidate_graph_stage import CandidateGraphStage  # noqa: E402
 from pipeline.stages.chunking_stage import ChunkingStage  # noqa: E402
 from pipeline.stages.embedding_stage import EmbeddingStage  # noqa: E402
 from pipeline.stages.entity_extraction_stage import EntityExtractionStage  # noqa: E402
@@ -49,53 +52,6 @@ from pipeline.stages.ontology_stage import OntologyStage  # noqa: E402
 from pipeline.stages.relationship_extraction_stage import RelationshipExtractionStage  # noqa: E402
 
 logger = logging.getLogger("kg_local")
-
-
-class _RunIdFilter(logging.Filter):
-    """Stamps every log record with the run_id of the CLI invocation that
-    produced it, so a Workflow task's JSON log lines can be correlated back
-    to a single run the same way this CLI's file logs can."""
-
-    def __init__(self, run_id: str) -> None:
-        super().__init__()
-        self.run_id = run_id
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.run_id = self.run_id
-        return True
-
-
-class _JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        payload = {
-            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
-            "level": record.levelname,
-            "logger": record.name,
-            "run_id": getattr(record, "run_id", None),
-            "message": record.getMessage(),
-        }
-        if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload)
-
-
-def setup_logging(config: AppConfig, run_id: str) -> Path:
-    log_dir = config.log_dir
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"ingest_{time.strftime('%Y%m%d_%H%M%S')}.log"
-
-    run_id_filter = _RunIdFilter(run_id)
-
-    file_handler = logging.FileHandler(log_path, encoding="utf-8")
-    file_handler.setFormatter(_JsonFormatter())
-    file_handler.addFilter(run_id_filter)
-
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-    console_handler.addFilter(run_id_filter)
-
-    logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler], force=True)
-    return log_path
 
 
 def load_ontology(config: AppConfig) -> dict:
@@ -134,6 +90,7 @@ def build_runner() -> PipelineRunner:
             EntityExtractionStage(),
             RelationshipExtractionStage(),
             ApprovalStage(),
+            CandidateGraphStage(),
             OntologyStage(),
             GraphStage(),
         ]
@@ -149,7 +106,7 @@ def run_ingest(docs_dir: str, run_id: str) -> None:
     logger.info("Docs directory: %s", docs_dir)
 
     ctx = build_context(config, docs_dir)
-    ctx = build_runner().run_all(ctx, through="approval")
+    ctx = build_runner().run_all(ctx, through="candidate_graph")
 
     if not ctx.documents:
         logger.warning("No documents were extracted from %s. Aborting.", docs_dir)
@@ -163,6 +120,12 @@ def run_ingest(docs_dir: str, run_id: str) -> None:
     logger.info(
         "Candidates saved: %d entities, %d relationships", ctx.entities_saved, ctx.relationships_saved
     )
+    if ctx.candidate_graph:
+        logger.info(
+            "Candidate Graph (silver) built: %d entities, %d relationships",
+            ctx.candidate_graph["stats"]["entities"],
+            ctx.candidate_graph["stats"]["entity_relationships"],
+        )
     logger.info("=== Knowledge Graph ingestion completed ===")
 
     review_dir = ctx.config.storage_root / "gold" / "review"
@@ -171,11 +134,16 @@ def run_ingest(docs_dir: str, run_id: str) -> None:
     print(f"Chunks created:                  {len(ctx.chunks)}")
     print(f"Entities extracted (raw):        {len(ctx.entities)}")
     print(f"Relationships extracted (raw):   {len(ctx.relationships)}")
-    print(f"New candidate concepts saved:    {ctx.entities_saved}")
+    print(f"New candidate entities saved:    {ctx.entities_saved}")
     print(f"New candidate relationships saved: {ctx.relationships_saved}")
+    if ctx.candidate_graph:
+        print(
+            f"Candidate Graph (silver) built:  {ctx.candidate_graph['stats']['entities']} entities, "
+            f"{ctx.candidate_graph['stats']['entity_relationships']} relationships"
+        )
     print(f"\nCandidates are ready for business review at: {review_dir}")
     print(f"  streamlit run app/streamlit_app.py")
-    print(f"\nAfter concepts are approved:")
+    print(f"\nAfter entities are approved:")
     print(f"  python src/main.py publish-ontology")
     print(f"  python src/main.py publish-graph")
     print(f"\nLog file: {log_path}")
@@ -195,14 +163,35 @@ def run_publish_ontology(run_id: str) -> None:
 
     ontology = ctx.ontology_result
     logger.info(
-        "Approved ontology generated: %d concepts, %d relationships",
+        "Approved ontology generated: %d entities, %d relationships",
         ontology["stats"]["total_entities"],
         ontology["stats"]["total_relationships"],
     )
     print("\n=== Ontology Generated ===")
-    print(f"Approved concepts:       {ontology['stats']['total_entities']}")
+    print(f"Approved entities:       {ontology['stats']['total_entities']}")
     print(f"Approved relationships:  {ontology['stats']['total_relationships']}")
     print(f"Written to: {ctx.config.storage_root / 'gold' / 'ontology' / 'ontology.json'}")
+    print(f"Log file: {log_path}")
+
+
+def run_candidate_graph(run_id: str) -> None:
+    load_dotenv(PROJECT_ROOT / ".env")
+    config = load_config()
+    log_path = setup_logging(config, run_id)
+
+    ctx = build_context(config)
+    ctx = build_runner().run_stage("candidate_graph", ctx)
+
+    stats = ctx.candidate_graph["stats"]
+    logger.info(
+        "Candidate Graph (silver) regenerated: %d entities, %d relationships",
+        stats["entities"],
+        stats["entity_relationships"],
+    )
+    print("\n=== Candidate Graph (Silver) Regenerated ===")
+    print(f"Candidate entities:       {stats['entities']}")
+    print(f"Candidate relationships:  {stats['entity_relationships']}")
+    print(f"Written to: {ctx.config.storage_root / 'silver' / 'candidate_graph' / 'candidate_graph.json'}")
     print(f"Log file: {log_path}")
 
 
@@ -233,20 +222,80 @@ def run_publish_graph(run_id: str) -> None:
     print(f"Log file: {log_path}")
 
 
+def run_chat(run_id: str) -> None:
+    load_dotenv(PROJECT_ROOT / ".env")
+    config = load_config()
+    log_path = setup_logging(config, run_id)
+
+    from agents.graphrag_agent import build_agent
+
+    embedding_provider = providers.get_embedding_provider(config)
+    graph_provider = providers.get_graph_provider(config)
+    llm_provider = providers.get_llm_provider(config)
+    agent = build_agent(llm_provider, embedding_provider, graph_provider, config)
+
+    print("=== Ask the Knowledge Graph ===")
+    print("Answers are grounded only in the approved Production Graph.")
+    print("Type 'exit' to quit.\n")
+    logger.info("Chat session started")
+
+    async def _loop() -> None:
+        thread = agent.get_new_thread()
+        while True:
+            try:
+                query = input("You: ").strip()
+            except EOFError:
+                break
+            if not query or query.lower() in {"exit", "quit"}:
+                break
+
+            try:
+                response = await agent.run(query, thread=thread)
+            except asyncio.TimeoutError:
+                print("\nAssistant: That took too long to answer - please try again.\n")
+                continue
+            except ValueError as exc:
+                print(f"\nAssistant: {exc}\n")
+                continue
+            except Exception:  # noqa: BLE001 - keep the REPL alive on provider/LLM errors
+                logger.exception("Chat turn failed")
+                print("\nAssistant: Something went wrong answering that - check the log file.\n")
+                continue
+            print(f"\nAssistant: {response}\n")
+
+            result = agent.last_result
+            if result.citations:
+                print("Sources:")
+                for citation in result.citations:
+                    print(f"  - chunk {citation['chunk_id']} (document {citation['document_id']})")
+                for path in result.graph_paths:
+                    print(f"  - graph path: {path}")
+                print()
+
+    asyncio.run(_loop())
+    print(f"Log file: {log_path}")
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="main.py", description="Local Knowledge Graph pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     ingest_parser = subparsers.add_parser(
-        "ingest", help="Extract documents into reviewable candidate concepts"
+        "ingest", help="Extract documents into reviewable candidate entities"
     )
     ingest_parser.add_argument("docs_dir", help="Directory containing source documents")
 
+    subparsers.add_parser(
+        "candidate-graph", help="Regenerate the silver-layer Candidate Graph from current candidates"
+    )
     subparsers.add_parser(
         "publish-ontology", help="Generate the approved ontology JSON from approved candidates"
     )
     subparsers.add_parser(
         "publish-graph", help="Load the approved ontology into Neo4j"
+    )
+    subparsers.add_parser(
+        "chat", help="Ask the Knowledge Graph a question (terminal REPL, Gold Graph only)"
     )
 
     return parser
@@ -259,10 +308,14 @@ def main() -> None:
 
     if args.command == "ingest":
         run_ingest(args.docs_dir, run_id)
+    elif args.command == "candidate-graph":
+        run_candidate_graph(run_id)
     elif args.command == "publish-ontology":
         run_publish_ontology(run_id)
     elif args.command == "publish-graph":
         run_publish_graph(run_id)
+    elif args.command == "chat":
+        run_chat(run_id)
 
 
 if __name__ == "__main__":

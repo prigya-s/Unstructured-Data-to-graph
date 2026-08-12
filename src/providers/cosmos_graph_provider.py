@@ -29,3 +29,12 @@ class CosmosGraphProvider(GraphProvider):
 
     def publish(self, graph: dict) -> dict:
         raise NotImplementedError(self._MSG)
+
+    def search_chunks(self, query_vector: list[float], top_k: int) -> list[dict]:
+        raise NotImplementedError(self._MSG)
+
+    def get_mentioned_entities(self, chunk_ids: list[str]) -> list[dict]:
+        raise NotImplementedError(self._MSG)
+
+    def get_neighbors(self, entity_ids: list[str], hops: int, limit: int) -> dict:
+        raise NotImplementedError(self._MSG)

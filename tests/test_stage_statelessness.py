@@ -18,6 +18,7 @@ from pipeline.stages import (
     relationship_extraction_stage,
 )
 from pipeline.stages.approval_stage import ApprovalStage
+from pipeline.stages.candidate_graph_stage import CandidateGraphStage
 from pipeline.stages.chunking_stage import ChunkingStage
 from pipeline.stages.embedding_stage import EmbeddingStage
 from pipeline.stages.entity_extraction_stage import EntityExtractionStage
@@ -38,6 +39,7 @@ class FakeStorageProvider(StorageProvider):
         self._approved_relationships = seed.get("approved_relationships", [])
         self._ontology = seed.get("ontology")
         self._graph_export = seed.get("graph_export")
+        self._candidate_graph = seed.get("candidate_graph")
         self.written: dict = {}
 
     def write_documents(self, records):
@@ -99,6 +101,12 @@ class FakeStorageProvider(StorageProvider):
 
     def read_graph_export(self):
         return self._graph_export
+
+    def write_candidate_graph(self, record):
+        self.written["candidate_graph"] = record
+
+    def read_candidate_graph(self):
+        return self._candidate_graph
 
 
 def _fresh_ctx(storage, **providers_) -> PipelineContext:
@@ -257,3 +265,46 @@ def test_approval_stage_reads_from_storage_not_ctx(monkeypatch):
     assert received["repository"] is approval_provider
     assert result.entities_saved == 1
     assert result.relationships_saved == 1
+
+
+class FakeApprovalProvider:
+    def __init__(self, entities, relationships) -> None:
+        self._entities = entities
+        self._relationships = relationships
+
+    def get_candidate_entities(self):
+        return self._entities
+
+    def get_candidate_relationships(self):
+        return self._relationships
+
+
+def test_candidate_graph_stage_reads_from_approval_provider_not_ctx():
+    from review.models import CandidateEntity, CandidateRelationship, WorkflowStatus
+
+    entities = [
+        CandidateEntity(
+            id="e1", name="Foo", entity_type="System", definition="d", business_meaning="b",
+            confidence_score=1.0, status=WorkflowStatus.APPROVED,
+        ),
+        CandidateEntity(
+            id="e2", name="Bar", entity_type="System", definition="d", business_meaning="b",
+            confidence_score=1.0, status=WorkflowStatus.PENDING_REVIEW,
+        ),
+    ]
+    relationships = [
+        CandidateRelationship(
+            id="rel1", source_entity="e1", relationship_type="USES", target_entity="e2",
+            confidence_score=1.0, status=WorkflowStatus.PENDING_REVIEW,
+        )
+    ]
+    storage = FakeStorageProvider()
+    approval_provider = FakeApprovalProvider(entities, relationships)
+    ctx = _fresh_ctx(storage, approval_provider=approval_provider)
+    assert ctx.candidate_graph is None
+
+    result = CandidateGraphStage().run(ctx)
+
+    assert result.candidate_graph["stats"]["entities"] == 2
+    assert result.candidate_graph["stats"]["entity_relationships"] == 1
+    assert storage.written["candidate_graph"] == result.candidate_graph

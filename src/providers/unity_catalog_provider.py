@@ -102,3 +102,10 @@ class UnityCatalogProvider(StorageProvider):
 
     def read_graph_export(self) -> dict | None:
         return self._blobs.read("graph_export")
+
+    # -- silver: candidate graph -----------------------------------------------
+    def write_candidate_graph(self, record: dict) -> None:
+        self._blobs.write("candidate_graph", record)
+
+    def read_candidate_graph(self) -> dict | None:
+        return self._blobs.read("candidate_graph")

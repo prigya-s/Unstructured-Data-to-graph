@@ -64,7 +64,9 @@ class DocumentEmbeddingRecord:
 
 @dataclass
 class CandidateEntityRecord:
-    """gold/entities - mirrors review.models.CandidateEntity.to_dict()."""
+    """silver/entities - mirrors review.models.CandidateEntity.to_dict().
+    Candidate (pre-approval) rows; promoted to Gold only via
+    ApprovedEntityRecord once approved."""
 
     id: str
     name: str
@@ -85,7 +87,9 @@ class CandidateEntityRecord:
 
 @dataclass
 class CandidateRelationshipRecord:
-    """gold/relationships - mirrors review.models.CandidateRelationship.to_dict()."""
+    """silver/relationships - mirrors review.models.CandidateRelationship.to_dict().
+    Candidate (pre-approval) rows; promoted to Gold only via
+    ApprovedRelationshipRecord once approved."""
 
     id: str
     source_entity: str
@@ -188,6 +192,8 @@ TABLE_REGISTRY: dict[str, tuple[type, tuple[str, ...]]] = {
 
 # Single-document ("blob") tables: unlike TABLE_REGISTRY's row-per-business
 # -record tables, these hold exactly one JSON document per deployment
-# (the latest ontology publish / graph export) - see providers/_delta_sql.py
-# BlobStore, which stores each as a single row keyed by a constant id.
-BLOB_TABLES = ("ontology", "graph_export")
+# (the latest ontology publish / graph export / candidate graph) - see
+# providers/_delta_sql.py BlobStore, which stores each as a single row keyed
+# by a constant id. "graph_export" is the Gold-layer Production Graph;
+# "candidate_graph" is the Silver-layer Candidate Graph.
+BLOB_TABLES = ("ontology", "graph_export", "candidate_graph")

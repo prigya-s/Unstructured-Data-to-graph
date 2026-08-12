@@ -42,6 +42,18 @@ class DatabricksEmbeddingProvider(EmbeddingProvider):
         )
         self.model_name = options.get("model_name", self.endpoint)
         self.batch_size = int(options.get("batch_size", 64))
+        self.request_timeout_seconds = float(options.get("request_timeout_seconds", 30))
+
+        missing = [
+            name
+            for name, value in (("host", self.host), ("token", self.token), ("endpoint", self.endpoint))
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                f"DatabricksEmbeddingProvider is missing secrets: {', '.join(missing)}. "
+                "Set them via the configured SecretsProvider (e.g. .env for EnvSecretsProvider)."
+            )
 
     def _invoke(self, texts: list[str]) -> list[list[float]]:
         url = f"{self.host.rstrip('/')}/serving-endpoints/{self.endpoint}/invocations"
@@ -56,7 +68,7 @@ class DatabricksEmbeddingProvider(EmbeddingProvider):
             },
         )
         try:
-            with urllib.request.urlopen(request) as response:
+            with urllib.request.urlopen(request, timeout=self.request_timeout_seconds) as response:
                 body = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")

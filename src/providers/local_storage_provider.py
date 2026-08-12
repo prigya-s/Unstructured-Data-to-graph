@@ -125,3 +125,11 @@ class LocalStorageProvider(StorageProvider):
 
     def read_graph_export(self) -> dict | None:
         return self._read_json(self.gold / "graph_exports" / "graph_export.json", None)
+
+    # -- silver: candidate graph -----------------------------------------------
+
+    def write_candidate_graph(self, record: dict) -> None:
+        self._write_json(self.silver / "candidate_graph" / "candidate_graph.json", record)
+
+    def read_candidate_graph(self) -> dict | None:
+        return self._read_json(self.silver / "candidate_graph" / "candidate_graph.json", None)

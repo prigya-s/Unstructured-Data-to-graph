@@ -75,6 +75,29 @@ class ObservabilityConfig:
 
 
 @dataclass
+class LLMConfig:
+    """Chat-completion backend for the GraphRAG conversational layer -
+    resolves to a Microsoft Agent Framework chat client. See
+    src/providers/llm_provider.py."""
+
+    provider: str = "azure_openai"
+    options: dict = field(default_factory=dict)
+
+
+@dataclass
+class RetrievalConfig:
+    """Tunables for src/retrieval/graphrag_service.py. Not a provider
+    section (no swappable backend today - Neo4j-only) so it has no
+    `provider` key, just options with defaults."""
+
+    top_k_chunks: int = 8
+    graph_expansion_hops: int = 1
+    max_neighbors: int = 20
+    agent_timeout_seconds: int = 60
+    max_query_length: int = 4000
+
+
+@dataclass
 class AppConfig:
     storage: StorageConfig = field(default_factory=StorageConfig)
     document_source: DocumentSourceConfig = field(default_factory=DocumentSourceConfig)
@@ -85,6 +108,8 @@ class AppConfig:
     secrets: SecretsConfig = field(default_factory=SecretsConfig)
     auth: AuthConfig = field(default_factory=AuthConfig)
     observability: ObservabilityConfig = field(default_factory=ObservabilityConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
 
     @property
     def storage_root(self) -> Path:
@@ -142,6 +167,11 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     auth_raw = dict(raw.get("auth") or {})
     auth_provider = auth_raw.pop("provider", "local")
 
+    llm_raw = dict(raw.get("llm") or {})
+    llm_provider = llm_raw.pop("provider", "azure_openai")
+
+    retrieval_raw = dict(raw.get("retrieval") or {})
+
     return AppConfig(
         storage=StorageConfig(
             provider=storage_provider, root=storage_root, options=storage_raw
@@ -156,4 +186,6 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         secrets=SecretsConfig(provider=secrets_provider, options=secrets_raw),
         auth=AuthConfig(provider=auth_provider, options=auth_raw),
         observability=ObservabilityConfig(**(raw.get("observability") or {})),
+        llm=LLMConfig(provider=llm_provider, options=llm_raw),
+        retrieval=RetrievalConfig(**retrieval_raw),
     )

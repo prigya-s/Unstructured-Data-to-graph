@@ -21,12 +21,18 @@ document_source:
     path: ./docs
 
 embedding:
-  provider: local_noop  # local_noop | databricks
+  provider: local_noop  # local_noop | databricks | azure_openai
   # databricks:               # only read when provider: databricks - see config.databricks.example.yaml
   #   host_env: DATABRICKS_HOST
   #   token_env: DATABRICKS_TOKEN
   #   endpoint_env: DATABRICKS_EMBEDDING_ENDPOINT
   #   model_name: databricks-gte-large-en
+  #   batch_size: 64
+  # azure_openai:             # only read when provider: azure_openai
+  #   endpoint_env: AZURE_OPENAI_ENDPOINT
+  #   api_key_env: AZURE_OPENAI_API_KEY
+  #   deployment: text-embedding-3-large
+  #   api_version: "2024-06-01"
   #   batch_size: 64
 
 approval:
@@ -59,3 +65,20 @@ auth:
 
 observability:
   log_dir: ./logs
+
+llm:
+  # Chat-completion backend for the GraphRAG conversational layer - resolves
+  # to a Microsoft Agent Framework chat client (see src/providers/llm_provider.py).
+  provider: azure_openai  # azure_openai
+  azure_openai:
+    endpoint_env: AZURE_OPENAI_ENDPOINT
+    api_key_env: AZURE_OPENAI_API_KEY
+    deployment: gpt-4o
+    api_version: "2024-06-01"
+
+retrieval:
+  # Tunables for the GraphRAG retrieval pipeline (src/retrieval/graphrag_service.py).
+  # No provider switch - Neo4j-only today.
+  top_k_chunks: 8
+  graph_expansion_hops: 1
+  max_neighbors: 20

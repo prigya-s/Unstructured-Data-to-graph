@@ -7,11 +7,32 @@ Business-friendly language only - never use the words "Node", "Edge",
 
 from __future__ import annotations
 
+import logging
+import uuid
 from datetime import datetime, timezone
+
+import streamlit as st
 
 import providers
 from config import load_config
+from observability.logging_setup import configure_streamlit_logging, set_correlation_id
 from review import CandidateEntity, HistoryEntry, WorkflowStatus
+
+LOGGER_NAME = "kg_local"
+
+
+def get_logger() -> logging.Logger:
+    """Ensures process-wide structured logging is configured (no-op after
+    the first call in this process), stamps the current Streamlit session's
+    correlation id onto the logging context for this script rerun, and
+    returns the shared "kg_local" logger - the same logger name/format
+    main.py's CLI runs use, so file logs from either surface can be
+    correlated the same way."""
+    configure_streamlit_logging(load_config())
+    if "correlation_id" not in st.session_state:
+        st.session_state.correlation_id = str(uuid.uuid4())
+    set_correlation_id(st.session_state.correlation_id)
+    return logging.getLogger(LOGGER_NAME)
 
 STATUS_LABELS: dict[WorkflowStatus, str] = {
     WorkflowStatus.NEW: "New",
@@ -32,6 +53,10 @@ STATUS_ORDER = [
 
 def get_repo():
     return providers.get_approval_provider(load_config())
+
+
+def get_storage():
+    return providers.get_storage_provider(load_config())
 
 
 def get_auth_provider():

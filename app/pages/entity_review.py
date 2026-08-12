@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import streamlit as st
 
-from common import add_history, format_confidence, get_repo, now_iso, reviewer_name, status_label
+from common import add_history, format_confidence, get_logger, get_repo, now_iso, reviewer_name, status_label
 from review import WorkflowStatus
 
-st.title("Business Concepts")
-st.caption("Review the business terms found in your documents. Approve the ones that belong in "
+logger = get_logger()
+
+st.title("Entity Review")
+st.caption("Review the entities found in your documents. Approve the ones that belong in "
            "the shared business glossary, reject the ones that don't, and merge duplicates.")
 
 repo = get_repo()
@@ -29,12 +31,12 @@ filtered = [
     e for e in all_entities if e.status in selected_statuses and e.entity_type in selected_categories
 ]
 
-st.write(f"Showing {len(filtered)} of {len(all_entities)} business concepts.")
+st.write(f"Showing {len(filtered)} of {len(all_entities)} entities.")
 
 approved_entities = [e for e in all_entities if e.status == WorkflowStatus.APPROVED]
 
 if not filtered:
-    st.info("No business concepts match the current filters.")
+    st.info("No entities match the current filters.")
 
 for entity in filtered:
     header = f"{entity.name}  ·  {entity.entity_type}  ·  {status_label(entity.status)}"
@@ -84,6 +86,7 @@ for entity in filtered:
                     entity.review_timestamp = now_iso()
                     add_history(entity, reviewer, "approve", comment or None)
                     repo.save_candidate_entity(entity)
+                    logger.info("Entity %s approved by %s", entity.id, reviewer)
                     st.rerun()
 
             if entity.status != WorkflowStatus.REJECTED:
@@ -93,16 +96,17 @@ for entity in filtered:
                     entity.review_timestamp = now_iso()
                     add_history(entity, reviewer, "reject", comment or None)
                     repo.save_candidate_entity(entity)
+                    logger.info("Entity %s rejected by %s", entity.id, reviewer)
                     st.rerun()
 
             merge_targets = [e for e in approved_entities if e.id != entity.id]
             if merge_targets and entity.status != WorkflowStatus.MERGED:
                 target_name = st.selectbox(
-                    "Merge With Existing Concept",
-                    options=["-- select a concept --"] + [t.name for t in merge_targets],
+                    "Merge With Existing Entity",
+                    options=["-- select an entity --"] + [t.name for t in merge_targets],
                     key=f"merge_target_{entity.id}",
                 )
-                if target_name != "-- select a concept --" and st.button(
+                if target_name != "-- select an entity --" and st.button(
                     "Confirm Merge", key=f"merge_{entity.id}"
                 ):
                     target = next(t for t in merge_targets if t.name == target_name)
@@ -110,6 +114,7 @@ for entity in filtered:
                     entity.status = WorkflowStatus.MERGED
                     add_history(entity, reviewer, "merge", f"Merged into '{target.name}'.")
                     repo.save_candidate_entity(entity)
+                    logger.info("Entity %s merged into %s by %s", entity.id, target.id, reviewer)
                     st.rerun()
 
             if entity.history:
