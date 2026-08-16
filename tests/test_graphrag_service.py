@@ -24,13 +24,17 @@ class FakeEmbeddingProvider:
 
 
 class FakeGraphProvider:
-    def __init__(self, chunks=None, entities=None, neighbors=None) -> None:
+    def __init__(self, chunks=None, entities=None, neighbors=None, linked_documents=None) -> None:
         self._chunks = chunks if chunks is not None else []
         self._entities = entities if entities is not None else []
         self._neighbors = neighbors if neighbors is not None else {"entities": [], "paths": []}
+        self._linked_documents = (
+            linked_documents if linked_documents is not None else {"documents": [], "paths": []}
+        )
         self.search_chunks_calls: list[tuple] = []
         self.get_mentioned_entities_calls: list[list[str]] = []
         self.get_neighbors_calls: list[tuple] = []
+        self.get_linked_documents_calls: list[tuple] = []
 
     def search_chunks(self, query_vector, top_k):
         self.search_chunks_calls.append((query_vector, top_k))
@@ -43,6 +47,10 @@ class FakeGraphProvider:
     def get_neighbors(self, entity_ids, hops, limit):
         self.get_neighbors_calls.append((list(entity_ids), hops, limit))
         return self._neighbors
+
+    def get_linked_documents(self, document_ids, hops, limit):
+        self.get_linked_documents_calls.append((list(document_ids), hops, limit))
+        return self._linked_documents
 
 
 def _config(**retrieval_overrides) -> AppConfig:
@@ -135,6 +143,55 @@ def test_retrieve_context_skips_neighbor_expansion_when_no_entities_mentioned():
     assert result.entities == []
     assert result.graph_paths == []
     assert graph_provider.get_neighbors_calls == []
+
+
+def test_retrieve_context_looks_up_linked_documents_and_formats_next_steps():
+    embedding_provider = FakeEmbeddingProvider()
+    graph_provider = FakeGraphProvider(
+        chunks=[
+            {"chunk_id": "c1", "document_id": "d1", "content": "a", "score": 0.9},
+            {"chunk_id": "c2", "document_id": "d1", "content": "b", "score": 0.8},
+        ],
+        linked_documents={
+            "documents": [{"document_id": "d2", "name": "Q33"}],
+            "paths": [{"source_name": "Q18", "answer_labels": ["A child"], "target_name": "Q33"}],
+        },
+    )
+    config = _config(page_link_hops=3, max_neighbors=15)
+
+    result = retrieve_context("q", embedding_provider, graph_provider, config)
+
+    assert graph_provider.get_linked_documents_calls == [(["d1"], 3, 15)]
+    assert result.next_steps == ["If A child: see Q33"]
+
+
+def test_retrieve_context_formats_next_step_without_answer_label():
+    embedding_provider = FakeEmbeddingProvider()
+    graph_provider = FakeGraphProvider(
+        chunks=[{"chunk_id": "c1", "document_id": "d1", "content": "a", "score": 0.9}],
+        linked_documents={
+            "documents": [{"document_id": "d2", "name": "Q33"}],
+            "paths": [{"source_name": "Q18", "answer_labels": [""], "target_name": "Q33"}],
+        },
+    )
+    config = _config()
+
+    result = retrieve_context("q", embedding_provider, graph_provider, config)
+
+    assert result.next_steps == ["Q18 leads to Q33"]
+
+
+def test_format_context_for_llm_renders_next_steps_section():
+    result = RetrievalResult(
+        chunks=[{"chunk_id": "c1", "document_id": "d1", "content": "a"}],
+        citations=[{"chunk_id": "c1", "document_id": "d1"}],
+        next_steps=["If A child: see Q33"],
+    )
+
+    text = format_context_for_llm(result)
+
+    assert "Next steps in this process:" in text
+    assert "If A child: see Q33" in text
 
 
 def test_format_context_for_llm_never_mentions_node_edge_cypher_ontology_class():

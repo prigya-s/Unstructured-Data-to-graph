@@ -14,6 +14,7 @@ from config.app_config import (
     AuthConfig,
     DocumentSourceConfig,
     EmbeddingConfig,
+    ExtractionConfig,
     GraphConfig,
     LLMConfig,
     OntologyConfig,
@@ -22,12 +23,19 @@ from config.app_config import (
 )
 from providers.auth_provider import AzureADAuthProvider, LocalAuthProvider, get_auth_provider
 from providers.azure_openai_embedding_provider import AzureOpenAIEmbeddingProvider
+from providers.azure_openai_extraction_provider import AzureOpenAIExtractionProvider
 from providers.azure_openai_llm_provider import AzureOpenAIChatLLMProvider
 from providers.local_embedding_provider import LocalEmbeddingProvider
+from providers.confluence_export_source import ConfluenceExportSource
 from providers.local_folder_source import LocalFolderSource
 from providers.local_ontology_provider import LocalOntologyProvider
 from providers.local_storage_provider import LocalStorageProvider
 from providers.neo4j_graph_provider import Neo4jGraphProvider
+from providers.ollama_embedding_provider import OllamaEmbeddingProvider
+from providers.hybrid_extraction_provider import HybridExtractionProvider
+from providers.ollama_extraction_provider import OllamaExtractionProvider
+from providers.ollama_llm_provider import OllamaLLMProvider
+from providers.ontology_rules_extraction_provider import OntologyRulesExtractionProvider
 from providers.secrets_provider import (
     AzureKeyVaultSecretsProvider,
     EnvSecretsProvider,
@@ -55,6 +63,19 @@ def test_storage_provider_unknown_raises(tmp_path):
 
 def test_document_source_local_folder(tmp_path):
     assert isinstance(providers.get_document_source(_config(tmp_path)), LocalFolderSource)
+
+
+def test_document_source_confluence_export(tmp_path):
+    config = _config(
+        tmp_path,
+        document_source=DocumentSourceConfig(
+            provider="confluence_export",
+            options={"confluence_export": {"path": str(tmp_path)}},
+        ),
+    )
+    source = providers.get_document_source(config)
+    assert isinstance(source, ConfluenceExportSource)
+    assert source.path == tmp_path
 
 
 def test_document_source_unknown_raises(tmp_path):
@@ -86,6 +107,38 @@ def test_embedding_provider_azure_openai_missing_secrets_raises(tmp_path, monkey
     config = _config(tmp_path, embedding=EmbeddingConfig(provider="azure_openai"))
     with pytest.raises(ValueError):
         providers.get_embedding_provider(config)
+
+
+def test_embedding_provider_ollama(tmp_path):
+    config = _config(tmp_path, embedding=EmbeddingConfig(provider="ollama"))
+    assert isinstance(providers.get_embedding_provider(config), OllamaEmbeddingProvider)
+
+
+def test_extraction_provider_ontology_rules_default(tmp_path):
+    assert isinstance(
+        providers.get_extraction_provider(_config(tmp_path)), OntologyRulesExtractionProvider
+    )
+
+
+def test_extraction_provider_ollama(tmp_path):
+    config = _config(tmp_path, extraction=ExtractionConfig(provider="ollama"))
+    assert isinstance(providers.get_extraction_provider(config), OllamaExtractionProvider)
+
+
+def test_extraction_provider_azure_openai(tmp_path):
+    config = _config(tmp_path, extraction=ExtractionConfig(provider="azure_openai"))
+    assert isinstance(providers.get_extraction_provider(config), AzureOpenAIExtractionProvider)
+
+
+def test_extraction_provider_hybrid(tmp_path):
+    config = _config(tmp_path, extraction=ExtractionConfig(provider="hybrid"))
+    assert isinstance(providers.get_extraction_provider(config), HybridExtractionProvider)
+
+
+def test_extraction_provider_unknown_raises(tmp_path):
+    config = _config(tmp_path, extraction=ExtractionConfig(provider="bogus"))
+    with pytest.raises(ValueError):
+        providers.get_extraction_provider(config)
 
 
 def test_approval_provider_local(tmp_path):
@@ -140,6 +193,11 @@ def test_llm_provider_azure_openai_missing_secrets_raises(tmp_path, monkeypatch)
     monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
     with pytest.raises(ValueError):
         providers.get_llm_provider(_config(tmp_path))
+
+
+def test_llm_provider_ollama(tmp_path):
+    config = _config(tmp_path, llm=LLMConfig(provider="ollama"))
+    assert isinstance(providers.get_llm_provider(config), OllamaLLMProvider)
 
 
 def test_llm_provider_unknown_raises(tmp_path):

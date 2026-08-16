@@ -1,12 +1,14 @@
 """
 RelationshipExtractionStage: gold entities + silver chunks + ontology schema
--> extraction.relationship_extractor.extract_relationships() (unmodified) ->
-StorageProvider.write_relationships() (gold).
+-> ctx.extraction_provider.extract_relationships() ->
+StorageProvider.write_relationships() (gold). Provider defaults to
+OntologyRulesExtractionProvider (unmodified rule-based behavior);
+ai.mode/extraction.provider can swap in OllamaExtractionProvider without
+touching this stage.
 """
 
 from __future__ import annotations
 
-from extraction import relationship_extractor
 from pipeline.context import PipelineContext
 
 from .base import PipelineStage
@@ -18,7 +20,7 @@ class RelationshipExtractionStage(PipelineStage):
     def run(self, ctx: PipelineContext) -> PipelineContext:
         chunks = ctx.storage.read_chunks()
         entities, mentions = ctx.storage.read_entities()
-        relationships = relationship_extractor.extract_relationships(
+        relationships = ctx.extraction_provider.extract_relationships(
             chunks, entities, mentions, ctx.ontology_schema
         )
         ctx.relationships = relationships

@@ -15,10 +15,12 @@ import streamlit as st
 
 import providers
 from config import load_config
+from graph.startup import initialize_graph
 from observability.logging_setup import configure_streamlit_logging, set_correlation_id
 from review import CandidateEntity, HistoryEntry, WorkflowStatus
 
 LOGGER_NAME = "kg_local"
+_graph_initialized = False
 
 
 def get_logger() -> logging.Logger:
@@ -61,6 +63,20 @@ def get_storage():
 
 def get_auth_provider():
     return providers.get_auth_provider(load_config())
+
+
+def get_graph_provider():
+    """Builds this run's GraphProvider and, on the first call in this
+    process only, connects and idempotently ensures constraints/indexes
+    exist - same first-call-wins guard as configure_streamlit_logging, so
+    Streamlit reruns (and repeated per-page calls) don't repeat the
+    connect/constraint/index round trips on every script rerun."""
+    global _graph_initialized
+    provider = providers.get_graph_provider(load_config())
+    if not _graph_initialized:
+        initialize_graph(provider)
+        _graph_initialized = True
+    return provider
 
 
 def now_iso() -> str:

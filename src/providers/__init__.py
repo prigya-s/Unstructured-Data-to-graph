@@ -17,6 +17,7 @@ from .approval_provider import ApprovalProvider, get_approval_provider
 from .auth_provider import AuthProvider, get_auth_provider
 from .document_source import DocumentSource
 from .embedding_provider import EmbeddingProvider
+from .extraction_provider import ExtractionProvider
 from .graph_provider import GraphProvider
 from .llm_provider import LLMProvider
 from .ontology_provider import OntologyProvider
@@ -52,11 +53,21 @@ def get_document_source(config: AppConfig) -> DocumentSource:
         from .confluence_source import ConfluenceSource
 
         return ConfluenceSource(config)
+    if provider == "confluence_export":
+        from .confluence_export_source import ConfluenceExportSource
+
+        options = config.document_source.options.get("confluence_export", {})
+        path = options.get("path", "./docs")
+        cache_dir = options.get("cache_dir")
+        return ConfluenceExportSource(path, cache_dir=cache_dir)
     if provider == "sharepoint":
         from .sharepoint_source import SharePointSource
 
         return SharePointSource(config)
-    raise ValueError(f"Unknown document_source.provider '{provider}'. Valid values: local_folder, confluence, sharepoint.")
+    raise ValueError(
+        f"Unknown document_source.provider '{provider}'. "
+        "Valid values: local_folder, confluence, confluence_export, sharepoint."
+    )
 
 
 def get_embedding_provider(config: AppConfig) -> EmbeddingProvider:
@@ -73,7 +84,36 @@ def get_embedding_provider(config: AppConfig) -> EmbeddingProvider:
         from .azure_openai_embedding_provider import AzureOpenAIEmbeddingProvider
 
         return AzureOpenAIEmbeddingProvider(config)
-    raise ValueError(f"Unknown embedding.provider '{provider}'. Valid values: local_noop, databricks, azure_openai.")
+    if provider == "ollama":
+        from .ollama_embedding_provider import OllamaEmbeddingProvider
+
+        return OllamaEmbeddingProvider(config)
+    raise ValueError(
+        f"Unknown embedding.provider '{provider}'. Valid values: local_noop, databricks, azure_openai, ollama."
+    )
+
+
+def get_extraction_provider(config: AppConfig) -> ExtractionProvider:
+    provider = config.extraction.provider
+    if provider == "ontology_rules":
+        from .ontology_rules_extraction_provider import OntologyRulesExtractionProvider
+
+        return OntologyRulesExtractionProvider()
+    if provider == "ollama":
+        from .ollama_extraction_provider import OllamaExtractionProvider
+
+        return OllamaExtractionProvider(config)
+    if provider == "azure_openai":
+        from .azure_openai_extraction_provider import AzureOpenAIExtractionProvider
+
+        return AzureOpenAIExtractionProvider(config)
+    if provider == "hybrid":
+        from .hybrid_extraction_provider import HybridExtractionProvider
+
+        return HybridExtractionProvider(config)
+    raise ValueError(
+        f"Unknown extraction.provider '{provider}'. Valid values: ontology_rules, ollama, azure_openai, hybrid."
+    )
 
 
 def get_ontology_provider(config: AppConfig) -> OntologyProvider:
@@ -91,11 +131,19 @@ def get_graph_provider(config: AppConfig) -> GraphProvider:
         from .neo4j_graph_provider import Neo4jGraphProvider
 
         return Neo4jGraphProvider(config)
+    if provider == "neo4j_aura":
+        from .neo4j_aura_graph_provider import Neo4jAuraGraphProvider
+
+        return Neo4jAuraGraphProvider(config)
     if provider == "cosmos":
         from .cosmos_graph_provider import CosmosGraphProvider
 
         return CosmosGraphProvider(config)
-    raise ValueError(f"Unknown graph.provider '{provider}'. Valid values: neo4j, cosmos.")
+    if provider == "mock":
+        from .mock_graph_provider import MockGraphProvider
+
+        return MockGraphProvider(config)
+    raise ValueError(f"Unknown graph.provider '{provider}'. Valid values: neo4j, neo4j_aura, cosmos, mock.")
 
 
 def get_llm_provider(config: AppConfig) -> LLMProvider:
@@ -104,13 +152,18 @@ def get_llm_provider(config: AppConfig) -> LLMProvider:
         from .azure_openai_llm_provider import AzureOpenAIChatLLMProvider
 
         return AzureOpenAIChatLLMProvider(config)
-    raise ValueError(f"Unknown llm.provider '{provider}'. Valid values: azure_openai.")
+    if provider == "ollama":
+        from .ollama_llm_provider import OllamaLLMProvider
+
+        return OllamaLLMProvider(config)
+    raise ValueError(f"Unknown llm.provider '{provider}'. Valid values: azure_openai, ollama.")
 
 
 __all__ = [
     "StorageProvider",
     "DocumentSource",
     "EmbeddingProvider",
+    "ExtractionProvider",
     "ApprovalProvider",
     "OntologyProvider",
     "GraphProvider",
@@ -120,6 +173,7 @@ __all__ = [
     "get_storage_provider",
     "get_document_source",
     "get_embedding_provider",
+    "get_extraction_provider",
     "get_approval_provider",
     "get_ontology_provider",
     "get_graph_provider",

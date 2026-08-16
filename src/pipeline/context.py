@@ -15,6 +15,7 @@ from config.app_config import AppConfig
 from providers.approval_provider import ApprovalProvider
 from providers.document_source import DocumentSource
 from providers.embedding_provider import EmbeddingProvider
+from providers.extraction_provider import ExtractionProvider
 from providers.graph_provider import GraphProvider
 from providers.ontology_provider import OntologyProvider
 from providers.storage_provider import StorageProvider
@@ -29,6 +30,7 @@ class PipelineContext:
     approval_provider: ApprovalProvider
     ontology_provider: OntologyProvider
     graph_provider: GraphProvider
+    extraction_provider: ExtractionProvider
     ontology_schema: dict = field(default_factory=dict)
 
     documents: list = field(default_factory=list)

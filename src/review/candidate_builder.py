@@ -42,6 +42,10 @@ DEFINITION_TEMPLATES: dict[str, str] = {
     "Team": "{name} is a team or group responsible for part of the organization's operations.",
     "Technology": "{name} is a technology or platform used in the organization's technical stack.",
     "Policy": "{name} is a policy or standard that governs how work must be carried out.",
+    "Check": "{name} is a verification or authentication check performed as part of a process.",
+    "Party": "{name} is a person or role involved in a business transaction or request.",
+    "Channel": "{name} is a channel through which customers or staff interact with the business.",
+    "Topic": "{name} is a topic covered by a page or section of the reviewed documents.",
 }
 
 BUSINESS_MEANING_TEMPLATES: dict[str, str] = {
@@ -55,6 +59,10 @@ BUSINESS_MEANING_TEMPLATES: dict[str, str] = {
     "Team": "Owns and is accountable for a part of the business or technology estate.",
     "Technology": "Provides technical capability used to build or run other components.",
     "Policy": "Sets rules or expectations that other concepts must comply with.",
+    "Check": "Confirms that a customer or request meets the conditions needed to proceed.",
+    "Party": "Identifies who is involved in, or affected by, a business transaction or request.",
+    "Channel": "Determines how a customer or staff member can carry out an interaction.",
+    "Topic": "Groups related content so business users can find guidance on a specific subject.",
 }
 
 _DEFAULT_DEFINITION = "{name} is a concept identified in the reviewed documents."

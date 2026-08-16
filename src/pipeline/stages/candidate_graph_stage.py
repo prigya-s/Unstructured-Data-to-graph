@@ -1,10 +1,13 @@
 """
 CandidateGraphStage: ApprovalProvider -> review.candidate_graph.build_candidate_graph()
--> StorageProvider.write_candidate_graph() (silver).
+-> StorageProvider.write_candidate_graph() (silver) +
+GraphProvider.build_candidate_graph() (silver, written into the same graph
+database under distinct :CandidateEntity/:CANDIDATE_RELATIONSHIP labels so
+retrieval - which only ever matches :Entity/:Chunk/:Document and the
+whitelisted relationship types - stays blind to it).
 
 Runs immediately after ApprovalStage, since it depends on the candidates
-ApprovalStage just created/refreshed. Produces the Silver-layer Candidate
-Graph - never reaches a GraphProvider.
+ApprovalStage just created/refreshed.
 """
 
 from __future__ import annotations
@@ -21,5 +24,6 @@ class CandidateGraphStage(PipelineStage):
     def run(self, ctx: PipelineContext) -> PipelineContext:
         candidate_graph = build_candidate_graph(ctx.approval_provider)
         ctx.storage.write_candidate_graph(candidate_graph)
+        ctx.graph_provider.build_candidate_graph(candidate_graph)
         ctx.candidate_graph = candidate_graph
         return ctx

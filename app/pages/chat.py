@@ -12,7 +12,7 @@ import time
 import streamlit as st
 
 import providers
-from common import get_logger
+from common import get_graph_provider, get_logger
 from config import load_config
 
 logger = get_logger()
@@ -28,7 +28,7 @@ def _build_agent():
 
     config = load_config()
     embedding_provider = providers.get_embedding_provider(config)
-    graph_provider = providers.get_graph_provider(config)
+    graph_provider = get_graph_provider()
     llm_provider = providers.get_llm_provider(config)
     return build_agent(llm_provider, embedding_provider, graph_provider, config)
 
@@ -109,5 +109,5 @@ if query:
             logger.exception("Chat turn failed")
             st.error(
                 "Could not get an answer from the Knowledge Graph Assistant. Check your Azure "
-                "OpenAI and Neo4j configuration, or check the log file for details."
+                "OpenAI and graph database configuration, or check the log file for details."
             )

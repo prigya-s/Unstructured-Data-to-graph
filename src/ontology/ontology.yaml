@@ -72,6 +72,71 @@ entity_types:
       - guideline
       - compliance
 
+  # ---------------------------------------------------------------------
+  # DRAFT - added for the MYDET (Change of Address SOP) corpus, pending
+  # subject-matter review. First-pass keyword guesses only, not validated
+  # against the full corpus by a domain expert.
+  #
+  # Caveat: entity_extractor._PHRASE_RE only matches sequences of tokens
+  # that each start with an uppercase letter, with no lowercase glue word
+  # in between. Practical consequences for this corpus:
+  #   - lowercase-leading terms ("iForm", "iForms") can never be extracted
+  #     as a candidate at all - these keywords will not fire on them.
+  #   - a lowercase word breaks a multi-word phrase, so "Change of Address"
+  #     extracts as two separate single-word candidates ("Change",
+  #     "Address"), never as one "Change of Address" entity.
+  #   - hyphenated compounds ("Account-Managing Adult") also split at the
+  #     hyphen.
+  # None of the above can be fixed by a keywords-only change; they would
+  # require changing the extraction regex, which is out of scope here.
+  # ---------------------------------------------------------------------
+  Role:
+    keywords:
+      - adult          # "Managing Adult"
+      - holder          # "Account Holder"
+      - customer
+
+  Product:
+    keywords:
+      - isa             # "ISA"
+      - jisa            # "JISA"
+      - ctf             # "CTF"
+      - account         # "Savings Account"
+
+  ExternalPartner:
+    keywords:
+      - mail            # "Royal Mail"
+      - office          # "Post Office"
+
+  Tool:
+    keywords:
+      - finder          # "Postal Address Finder"
+
+  Check:
+    keywords:
+      - authentication
+      - verification
+      - check
+
+  Party:
+    keywords:
+      - contact
+      - beneficiary
+      - donor
+
+  Channel:
+    keywords:
+      - ivr
+      - branch
+      - telephony
+
+  # Topic has no keywords: it is never classified via _classify()'s
+  # suffix-matching path. Instead entity_extractor promotes each chunk's
+  # section heading (chunk["section_path"]'s last segment) directly to a
+  # Topic entity - see entity_extractor._promote_heading_topic().
+  Topic:
+    keywords: []
+
 technology_gazetteer:
   - Kubernetes
   - Docker
@@ -93,6 +158,21 @@ technology_gazetteer:
   - TensorFlow
   - Terraform
   - Linux
+
+# domain_gazetteer: known domain-specific acronyms/short-forms that don't
+# reliably classify by suffix keyword (e.g. bare acronyms like "IVR" have
+# no keyword suffix to match against). Unlike technology_gazetteer (which
+# is a flat list always typed "Technology"), each entry here maps directly
+# to its correct entity type.
+domain_gazetteer:
+  IVR: Channel
+  CAT: Check
+  SAMM: System
+  COA: Process
+  FATCA: Policy
+  DIP: Product
+  TMW: ExternalPartner
+  CCBS: ExternalPartner
 
 relationship_types:
   USES:
@@ -137,3 +217,31 @@ relationship_types:
       - references
       - refers to
       - cites
+
+  # DRAFT - added for the MYDET corpus, pending subject-matter review.
+  REFERS_TO:
+    triggers:
+      - refer to
+      - refer them to
+      - redirect to
+      - redirected to
+
+  ESCALATES_TO:
+    triggers:
+      - escalate to
+      - escalated to
+      - hand over to
+      - handover to
+      - transfer to
+
+  REQUIRES:
+    triggers:
+      - must
+      - need to
+      - needs to
+
+  APPLIES_TO:
+    triggers:
+      - applies to
+      - for accounts with
+      - for customers with

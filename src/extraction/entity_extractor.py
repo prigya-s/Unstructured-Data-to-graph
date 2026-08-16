@@ -10,20 +10,32 @@ in the technology gazetteer.
 
 from __future__ import annotations
 
-import hashlib
 import re
 
-_PHRASE_RE = re.compile(r"\b[A-Z][A-Za-z0-9.]*(?:(?<!\.)\s+[A-Z][A-Za-z0-9.]*){0,4}\b")
+from .id_utils import build_entity_id
+
+_GLUE_WORDS = {"of", "the", "for", "to"}
+_GLUE_PATTERN = "|".join(sorted(_GLUE_WORDS))
+
+# A capitalized "word" may contain internal hyphens (e.g. "Account-Managing"),
+# and up to 4 more tokens may follow - each either another capitalized word or
+# one of the lowercase glue words above (e.g. "Change of Address"). The
+# (?<!\.) lookbehind still blocks gluing across a sentence-ending period.
+_PHRASE_RE = re.compile(
+    r"\b[A-Z][A-Za-z0-9.\-]*"
+    rf"(?:(?<!\.)\s+(?:[A-Z][A-Za-z0-9.\-]*|(?:{_GLUE_PATTERN}))){{0,4}}\b"
+)
 
 _STRIP_LEADING = {
     "The", "This", "That", "These", "Those", "All", "It", "In", "On", "For",
     "And", "Or", "A", "An",
 }
 
-
-def _slugify(text: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", text.strip().lower()).strip("_")
-    return slug or hashlib.md5(text.encode("utf-8")).hexdigest()[:8]
+# A matched phrase may legitimately end on a glue word if the capitalized
+# word that would have followed it wasn't itself a valid phrase continuation
+# (e.g. lowercased in the source, or end of sentence) - trim those trailing
+# glue words so "Change of" doesn't outlive "Change of Address" as its own hit.
+_STRIP_TRAILING = _GLUE_WORDS
 
 
 def _build_suffix_map(ontology: dict) -> dict[str, str]:
@@ -38,14 +50,31 @@ def _build_gazetteer(ontology: dict) -> set[str]:
     return {t.lower() for t in ontology.get("technology_gazetteer") or []}
 
 
+def _build_domain_gazetteer(ontology: dict) -> dict[str, str]:
+    """term -> entity_type, e.g. {"IVR": "Channel", "CAT": "Check"}.
+
+    Unlike the flat technology_gazetteer (always "Technology"), each entry
+    here is a domain acronym that types to something else entirely. Matched
+    by exact case (acronyms), not lowercased, so it can't collide with an
+    ordinary capitalized word that happens to share letters."""
+    return dict(ontology.get("domain_gazetteer") or {})
+
+
 def _clean_phrase(phrase: str) -> str:
     tokens = phrase.split()
     while tokens and tokens[0] in _STRIP_LEADING:
         tokens.pop(0)
+    while tokens and tokens[-1] in _STRIP_TRAILING:
+        tokens.pop()
     return " ".join(tokens)
 
 
-def _classify(phrase: str, suffix_map: dict[str, str], gazetteer: set[str]) -> str | None:
+def _classify(
+    phrase: str,
+    suffix_map: dict[str, str],
+    gazetteer: set[str],
+    domain_gazetteer: dict[str, str],
+) -> str | None:
     tokens = phrase.split()
     if not tokens:
         return None
@@ -63,10 +92,29 @@ def _classify(phrase: str, suffix_map: dict[str, str], gazetteer: set[str]) -> s
             return entity_type
         return None
 
+    domain_type = domain_gazetteer.get(tokens[-1].rstrip(".,;:"))
+    if domain_type:
+        return domain_type
+
     if is_gazetteer_hit:
         return "Technology"
 
     return None
+
+
+def _promote_heading_topic(chunk: dict) -> dict | None:
+    """Promote a chunk's innermost section heading to a Topic entity.
+
+    MYDET pages carry their real semantic anchors in headings ("Mortgage
+    address", "Previous authentication") that the prose-based phrase regex
+    can't reliably lift out of sentence text. section_path falls back to
+    the document_id on headless pages (semantic_chunker.chunk_markdown) -
+    skip those so we don't mint a Topic named after a page id."""
+    section_path = chunk.get("section_path") or ""
+    heading = section_path.rsplit(" > ", 1)[-1].strip()
+    if not heading or heading == chunk.get("document"):
+        return None
+    return {"name": heading, "type": "Topic", "source_chunk": chunk["chunk_id"]}
 
 
 def extract_entities_from_chunk(chunk: dict, ontology: dict) -> list[dict]:
@@ -76,33 +124,42 @@ def extract_entities_from_chunk(chunk: dict, ontology: dict) -> list[dict]:
     wrapper - rebuilds the ontology-derived lookup structures on every call,
     which is fine for a single chunk but wasteful across many (see
     extract_entities, which builds them once and reuses them)."""
-    return _extract_from_chunk(chunk, _build_suffix_map(ontology), _build_gazetteer(ontology))
+    return _extract_from_chunk(
+        chunk,
+        _build_suffix_map(ontology),
+        _build_gazetteer(ontology),
+        _build_domain_gazetteer(ontology),
+    )
 
 
-def _extract_from_chunk(chunk: dict, suffix_map: dict[str, str], gazetteer: set[str]) -> list[dict]:
+def _extract_from_chunk(
+    chunk: dict,
+    suffix_map: dict[str, str],
+    gazetteer: set[str],
+    domain_gazetteer: dict[str, str],
+) -> list[dict]:
     found: list[dict] = []
     seen_in_chunk: set[tuple[str, str]] = set()
+
+    def _add(name: str, entity_type: str) -> None:
+        key = (name.lower(), entity_type)
+        if key in seen_in_chunk:
+            return
+        seen_in_chunk.add(key)
+        found.append({"name": name, "type": entity_type, "source_chunk": chunk["chunk_id"]})
+
+    topic = _promote_heading_topic(chunk)
+    if topic is not None:
+        _add(topic["name"], topic["type"])
 
     for match in _PHRASE_RE.finditer(chunk["content"]):
         phrase = _clean_phrase(match.group(0).strip())
         if not phrase:
             continue
-        entity_type = _classify(phrase, suffix_map, gazetteer)
+        entity_type = _classify(phrase, suffix_map, gazetteer, domain_gazetteer)
         if entity_type is None:
             continue
-
-        key = (phrase.lower(), entity_type)
-        if key in seen_in_chunk:
-            continue
-        seen_in_chunk.add(key)
-
-        found.append(
-            {
-                "name": phrase,
-                "type": entity_type,
-                "source_chunk": chunk["chunk_id"],
-            }
-        )
+        _add(phrase, entity_type)
 
     return found
 
@@ -118,17 +175,18 @@ def extract_entities(chunks: list[dict], ontology: dict) -> tuple[list[dict], li
     """
     suffix_map = _build_suffix_map(ontology)
     gazetteer = _build_gazetteer(ontology)
+    domain_gazetteer = _build_domain_gazetteer(ontology)
 
     entities_by_key: dict[tuple[str, str], dict] = {}
     mentions: list[dict] = []
     mention_keys: set[tuple[str, str]] = set()
 
     for chunk in chunks:
-        raw_entities = _extract_from_chunk(chunk, suffix_map, gazetteer)
+        raw_entities = _extract_from_chunk(chunk, suffix_map, gazetteer, domain_gazetteer)
         for raw in raw_entities:
             key = (raw["name"].lower(), raw["type"])
             if key not in entities_by_key:
-                entity_id = f"entity_{_slugify(raw['type'])}_{_slugify(raw['name'])}"
+                entity_id = build_entity_id(raw["type"], raw["name"])
                 entities_by_key[key] = {
                     "id": entity_id,
                     "name": raw["name"],

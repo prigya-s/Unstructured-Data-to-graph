@@ -35,6 +35,30 @@ st.write(f"Showing {len(filtered)} of {len(all_entities)} entities.")
 
 approved_entities = [e for e in all_entities if e.status == WorkflowStatus.APPROVED]
 
+pending_in_filter = [
+    e
+    for e in filtered
+    if e.status not in (WorkflowStatus.APPROVED, WorkflowStatus.REJECTED, WorkflowStatus.MERGED)
+]
+if pending_in_filter:
+    confirm_bulk = st.checkbox(
+        f"Confirm bulk action on all {len(pending_in_filter)} pending entities shown below"
+    )
+    if st.button(
+        f"Approve all {len(pending_in_filter)} filtered pending entities",
+        disabled=not confirm_bulk,
+    ):
+        for entity in pending_in_filter:
+            entity.status = WorkflowStatus.APPROVED
+            entity.reviewer = reviewer
+            entity.review_timestamp = now_iso()
+            add_history(entity, reviewer, "approve", "Bulk approved.")
+            repo.save_candidate_entity(entity)
+        logger.info(
+            "Bulk approved %d entities by %s", len(pending_in_filter), reviewer
+        )
+        st.rerun()
+
 if not filtered:
     st.info("No entities match the current filters.")
 

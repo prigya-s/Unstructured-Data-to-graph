@@ -3,6 +3,9 @@
 lakehouse/
 output/
 logs/
+docs/*
+!docs/architecture/
+!docs/architecture/**
 __pycache__/
 *.pyc
 .pytest_cache/

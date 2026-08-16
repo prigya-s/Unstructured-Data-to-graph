@@ -33,15 +33,7 @@ class ExtractionStage(PipelineStage):
                 logger.exception("Failed to extract %s", file_path)
                 continue
 
-            markdown_documents.append(
-                {
-                    "document_id": doc_ref["document_id"],
-                    "document_name": doc_ref["document_name"],
-                    "source_path": doc_ref["source_path"],
-                    "markdown_path": "",
-                    "markdown": markdown,
-                }
-            )
+            markdown_documents.append({**doc_ref, "markdown_path": "", "markdown": markdown})
 
         ctx.markdown_documents = markdown_documents
         ctx.storage.write_markdown(markdown_documents)

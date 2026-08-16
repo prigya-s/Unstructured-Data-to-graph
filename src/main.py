@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -37,6 +38,8 @@ sys.path.insert(0, str(SRC_DIR))
 import providers  # noqa: E402
 from config import load_config  # noqa: E402
 from config.app_config import AppConfig  # noqa: E402
+from graph import graph_builder  # noqa: E402
+from graph.startup import initialize_graph  # noqa: E402
 from observability.logging_setup import setup_logging  # noqa: E402
 from pipeline.context import PipelineContext  # noqa: E402
 from pipeline.runner import PipelineRunner  # noqa: E402
@@ -53,6 +56,11 @@ from pipeline.stages.relationship_extraction_stage import RelationshipExtraction
 
 logger = logging.getLogger("kg_local")
 
+# MYDET page titles end "... - Q<n>" (e.g. "MD1.50 - Q55"). Section/appendix
+# pages legitimately don't match this - it's a data-quality signal to review,
+# not a hard error.
+_SOP_ID_SUFFIX_RE = re.compile(r"Q\d+$")
+
 
 def load_ontology(config: AppConfig) -> dict:
     with open(config.ontology_schema_path, "r", encoding="utf-8") as f:
@@ -68,6 +76,9 @@ def build_context(config: AppConfig, docs_dir: str | None = None) -> PipelineCon
             "path": docs_dir,
         }
 
+    graph_provider = providers.get_graph_provider(config)
+    initialize_graph(graph_provider)
+
     return PipelineContext(
         config=config,
         storage=providers.get_storage_provider(config),
@@ -75,7 +86,8 @@ def build_context(config: AppConfig, docs_dir: str | None = None) -> PipelineCon
         embedding_provider=providers.get_embedding_provider(config),
         approval_provider=providers.get_approval_provider(config),
         ontology_provider=providers.get_ontology_provider(config),
-        graph_provider=providers.get_graph_provider(config),
+        graph_provider=graph_provider,
+        extraction_provider=providers.get_extraction_provider(config),
         ontology_schema=load_ontology(config),
     )
 
@@ -97,6 +109,104 @@ def build_runner() -> PipelineRunner:
     )
 
 
+def _read_previous_snapshot(storage) -> dict:
+    """Reads whatever the last `ingest` run persisted, before this run's
+    stages overwrite it - the baseline the diff report below compares
+    against. Empty on a first-ever run (everything reports as new)."""
+    documents = storage.read_documents()
+    entities, _mentions = storage.read_entities()
+    relationships = storage.read_relationships()
+    return {
+        "document_ids": {doc["document_id"] for doc in documents},
+        "content_hash_by_document_id": {
+            doc["document_id"]: doc.get("content_hash") for doc in documents
+        },
+        "entity_ids": {entity["id"] for entity in entities},
+        "relationship_keys": {
+            (rel["source"], rel["relationship"], rel["target"]) for rel in relationships
+        },
+    }
+
+
+def _find_orphan_document_ids(documents: list[dict], structural_graph: dict) -> set:
+    """Documents with no CHILD_OF_PAGE/LEADS_TO edge in either direction -
+    disconnected from the page tree and the in-text decision links, so a
+    reader has no way to reach (or leave) the page through this corpus."""
+    connected: set = set()
+    for edge in structural_graph["relationships"]["page_hierarchy"]:
+        connected.add(edge["child_id"])
+        connected.add(edge["parent_id"])
+    for link in structural_graph["relationships"]["page_links"]:
+        connected.add(link["source_id"])
+        connected.add(link["target_id"])
+    return {doc["document_id"] for doc in documents} - connected
+
+
+def _log_ingestion_diff_report(previous: dict, ctx: PipelineContext) -> None:
+    documents = ctx.markdown_documents
+    structural_graph = graph_builder.build_graph(
+        documents, ctx.chunks, ctx.entities, ctx.mentions, ctx.relationships
+    )
+
+    current_document_ids = {doc["document_id"] for doc in documents}
+    added = current_document_ids - previous["document_ids"]
+    removed = previous["document_ids"] - current_document_ids
+    changed = {
+        doc["document_id"]
+        for doc in documents
+        if doc["document_id"] in previous["content_hash_by_document_id"]
+        and doc.get("content_hash") != previous["content_hash_by_document_id"][doc["document_id"]]
+    }
+
+    current_entity_ids = {entity["id"] for entity in ctx.entities}
+    entities_gained = current_entity_ids - previous["entity_ids"]
+    entities_lost = previous["entity_ids"] - current_entity_ids
+
+    current_relationship_keys = {
+        (rel["source"], rel["relationship"], rel["target"]) for rel in ctx.relationships
+    }
+    relationships_gained = current_relationship_keys - previous["relationship_keys"]
+    relationships_lost = previous["relationship_keys"] - current_relationship_keys
+
+    missing_sop_suffix = sorted(
+        doc["document_name"]
+        for doc in documents
+        if not _SOP_ID_SUFFIX_RE.search(doc["document_name"].strip())
+    )
+    orphan_ids = _find_orphan_document_ids(documents, structural_graph)
+    orphan_names = sorted(doc["document_name"] for doc in documents if doc["document_id"] in orphan_ids)
+
+    logger.info(
+        "Ingestion diff: pages +%d/-%d/~%d, entities +%d/-%d, relationships +%d/-%d, "
+        "missing_sop_suffix=%d, orphan_documents=%d",
+        len(added), len(removed), len(changed),
+        len(entities_gained), len(entities_lost),
+        len(relationships_gained), len(relationships_lost),
+        len(missing_sop_suffix), len(orphan_names),
+    )
+    logger.info("Pages missing SOP-id suffix: %s", missing_sop_suffix)
+    logger.info("Orphan pages: %s", orphan_names)
+
+    def _print_list(label: str, names: list[str], limit: int = 20) -> None:
+        print(f"  {label}: {len(names)}")
+        for name in names[:limit]:
+            print(f"    - {name}")
+        if len(names) > limit:
+            print(f"    ... and {len(names) - limit} more (see log file)")
+
+    print("\n=== Ingestion Diff Report (vs. previous run) ===")
+    print(f"Pages added:                 {len(added)}")
+    print(f"Pages changed (content_hash): {len(changed)}")
+    print(f"Pages removed:                {len(removed)}")
+    print(f"Entities gained:              {len(entities_gained)}")
+    print(f"Entities lost:                {len(entities_lost)}")
+    print(f"Relationships gained:         {len(relationships_gained)}")
+    print(f"Relationships lost:           {len(relationships_lost)}")
+    print("\nData quality signals:")
+    _print_list("Pages missing a SOP-id suffix (e.g. 'Q42')", missing_sop_suffix)
+    _print_list("Orphan pages (no page-tree or in-text link in/out)", orphan_names)
+
+
 def run_ingest(docs_dir: str, run_id: str) -> None:
     load_dotenv(PROJECT_ROOT / ".env")
     config = load_config()
@@ -106,6 +216,7 @@ def run_ingest(docs_dir: str, run_id: str) -> None:
     logger.info("Docs directory: %s", docs_dir)
 
     ctx = build_context(config, docs_dir)
+    previous_snapshot = _read_previous_snapshot(ctx.storage)
     ctx = build_runner().run_all(ctx, through="candidate_graph")
 
     if not ctx.documents:
@@ -146,6 +257,9 @@ def run_ingest(docs_dir: str, run_id: str) -> None:
     print(f"\nAfter entities are approved:")
     print(f"  python src/main.py publish-ontology")
     print(f"  python src/main.py publish-graph")
+
+    _log_ingestion_diff_report(previous_snapshot, ctx)
+
     print(f"\nLog file: {log_path}")
 
 
@@ -231,6 +345,7 @@ def run_chat(run_id: str) -> None:
 
     embedding_provider = providers.get_embedding_provider(config)
     graph_provider = providers.get_graph_provider(config)
+    initialize_graph(graph_provider)
     llm_provider = providers.get_llm_provider(config)
     agent = build_agent(llm_provider, embedding_provider, graph_provider, config)
 

@@ -25,6 +25,7 @@ class RetrievalResult:
     entities: list[dict] = field(default_factory=list)
     graph_paths: list[str] = field(default_factory=list)
     citations: list[dict] = field(default_factory=list)
+    next_steps: list[str] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -41,6 +42,14 @@ def _embed_query(embedding_provider, query: str) -> list[float]:
 def _format_path(path: dict) -> str:
     hops = " -> ".join(path["relationship_types"]) if path["relationship_types"] else "related to"
     return f"{path['source_name']} {hops} {path['target_name']}"
+
+
+def _format_next_step(path: dict) -> str:
+    labels = [label for label in path.get("answer_labels") or [] if label]
+    if labels:
+        condition = " -> ".join(labels)
+        return f"If {condition}: see {path['target_name']}"
+    return f"{path['source_name']} leads to {path['target_name']}"
 
 
 def retrieve_context(
@@ -71,8 +80,18 @@ def retrieve_context(
         {"chunk_id": chunk["chunk_id"], "document_id": chunk["document_id"]} for chunk in chunks
     ]
 
+    document_ids = list({chunk["document_id"] for chunk in chunks})
+    linked = graph_provider.get_linked_documents(
+        document_ids, config.retrieval.page_link_hops, config.retrieval.max_neighbors
+    )
+    next_steps = [_format_next_step(path) for path in linked["paths"]]
+
     return RetrievalResult(
-        chunks=chunks, entities=entities, graph_paths=graph_paths, citations=citations
+        chunks=chunks,
+        entities=entities,
+        graph_paths=graph_paths,
+        citations=citations,
+        next_steps=next_steps,
     )
 
 
@@ -106,5 +125,10 @@ def format_context_for_llm(result: RetrievalResult) -> str:
         lines.append("\nRelationships between these entities:")
         for path in result.graph_paths:
             lines.append(f"- {path}")
+
+    if result.next_steps:
+        lines.append("\nNext steps in this process:")
+        for step in result.next_steps:
+            lines.append(f"- {step}")
 
     return "\n".join(lines)

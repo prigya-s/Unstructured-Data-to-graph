@@ -1,16 +1,27 @@
 """
 Phase 7: Neo4j loader.
 
-Connects to a local Neo4j instance using credentials from .env, creates
-uniqueness constraints, and idempotently loads Document/Chunk/Entity
-nodes plus HAS_CHUNK / MENTIONS / ontology relationships via batched
-MERGE statements (safe to re-run without creating duplicates).
+Connects to a Neo4j instance (local Desktop/Docker via bolt://, or Neo4j
+AuraDB via neo4j+s://, both accepted unchanged - the driver is scheme
+agnostic) using credentials from .env, creates uniqueness constraints and
+indexes, and idempotently loads Document/Chunk/Entity nodes plus HAS_CHUNK /
+MENTIONS / ontology relationships via batched MERGE statements (safe to
+re-run without creating duplicates). Also loads the Silver-tier
+CandidateEntity/CANDIDATE_RELATIONSHIP subgraph, fully refreshed each run,
+under labels retrieval never matches.
+
+Writes go through session.execute_write() and reads through
+session.execute_read() (managed transactions) rather than bare session.run(),
+so the driver's built-in retry on transient errors (ServiceUnavailable,
+SessionExpired - the errors Aura's rolling maintenance/leader elections
+raise) applies to every query.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 
 from neo4j import GraphDatabase
 
@@ -29,12 +40,17 @@ ALLOWED_RELATIONSHIP_TYPES = {
     "CONTAINS",
     "IMPLEMENTS",
     "REFERENCES",
+    "REFERS_TO",
+    "ESCALATES_TO",
+    "REQUIRES",
+    "APPLIES_TO",
 }
 
 _CONSTRAINTS = [
     "CREATE CONSTRAINT document_id IF NOT EXISTS FOR (d:Document) REQUIRE d.id IS UNIQUE",
     "CREATE CONSTRAINT chunk_id IF NOT EXISTS FOR (c:Chunk) REQUIRE c.id IS UNIQUE",
     "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
+    "CREATE CONSTRAINT candidate_entity_id IF NOT EXISTS FOR (e:CandidateEntity) REQUIRE e.id IS UNIQUE",
 ]
 
 _BATCH_SIZE = 500
@@ -65,6 +81,7 @@ class Neo4jLoader:
 
     def close(self):
         self._driver.close()
+        logger.info("graph_operation operation=close uri=%s", self.uri)
 
     def __enter__(self):
         return self
@@ -75,19 +92,78 @@ class Neo4jLoader:
     def verify_connectivity(self):
         self._driver.verify_connectivity()
 
+    def connect_with_retry(self, attempts: int = 3, base_delay: float = 1.0) -> None:
+        """Retries verify_connectivity() with exponential backoff. Runs
+        before any session/transaction exists, so it isn't covered by the
+        driver's own managed-transaction retry - this is the one place that
+        needs an explicit retry loop."""
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                self.verify_connectivity()
+                logger.info(
+                    "graph_operation operation=connect uri=%s database=%s attempt=%d status=ok",
+                    self.uri, self.database, attempt,
+                )
+                return
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "graph_operation operation=connect uri=%s attempt=%d status=retry error=%s",
+                    self.uri, attempt, exc,
+                )
+                if attempt < attempts:
+                    time.sleep(base_delay * (2 ** (attempt - 1)))
+        logger.error(
+            "graph_operation operation=connect uri=%s attempts=%d status=failed", self.uri, attempts
+        )
+        raise last_error
+
+    def _run_batched(self, session, query: str, rows: list[dict]) -> int:
+        total = 0
+        start = time.perf_counter()
+        for i in range(0, len(rows), _BATCH_SIZE):
+            batch = rows[i : i + _BATCH_SIZE]
+            session.execute_write(lambda tx, q=query, b=batch: tx.run(q, rows=b).consume())
+            total += len(batch)
+        logger.info(
+            "graph_operation operation=write rows=%d duration_ms=%d",
+            total, int((time.perf_counter() - start) * 1000),
+        )
+        return total
+
+    def _run_read(self, session, query: str, **params):
+        start = time.perf_counter()
+        result = session.execute_read(lambda tx: list(tx.run(query, **params)))
+        logger.info(
+            "graph_operation operation=read rows=%d duration_ms=%d",
+            len(result), int((time.perf_counter() - start) * 1000),
+        )
+        return result
+
     def create_constraints(self):
         with self._driver.session(database=self.database) as session:
             for statement in _CONSTRAINTS:
-                session.run(statement)
-        logger.info("Constraints ensured (document_id, chunk_id, entity_id)")
+                session.execute_write(lambda tx, q=statement: tx.run(q).consume())
+        logger.info("graph_operation operation=create_constraints count=%d", len(_CONSTRAINTS))
 
-    def _run_batched(self, session, query: str, rows: list[dict]):
-        total = 0
-        for i in range(0, len(rows), _BATCH_SIZE):
-            batch = rows[i : i + _BATCH_SIZE]
-            session.run(query, rows=batch)
-            total += len(batch)
-        return total
+    def create_indexes(self, embedding_dimensions: int | None = None) -> None:
+        """Idempotently ensures all required indexes exist. Safe to call at
+        startup before any chunk has been loaded - if embedding_dimensions
+        isn't known yet, the vector index is skipped here and created later
+        (see create_vector_index(), still called from load_graph() once a
+        chunk with an embedding is seen)."""
+        if embedding_dimensions is None:
+            logger.info("graph_operation operation=create_indexes status=skipped_no_dimensions")
+            return
+        with self._driver.session(database=self.database) as session:
+            self.create_vector_index(session, embedding_dimensions)
+
+    def _run_batched_unwrapped(self, session, query: str, rows: list[dict]):
+        # Used for the very first write on a fresh session where nothing
+        # else has run yet; kept identical to _run_batched, isolated for
+        # clarity when reading create_constraints/_run_batched together.
+        return self._run_batched(session, query, rows)
 
     def load_documents(self, session, documents: list[dict]) -> int:
         query = """
@@ -95,7 +171,11 @@ class Neo4jLoader:
         MERGE (d:Document {id: row.id})
         SET d.name = row.name,
             d.source_path = row.source_path,
-            d.markdown_path = row.markdown_path
+            d.markdown_path = row.markdown_path,
+            d.space_key = row.space_key,
+            d.version = row.version,
+            d.content_hash = row.content_hash,
+            d.parent_page_id = row.parent_page_id
         """
         return self._run_batched(session, query, documents)
 
@@ -114,18 +194,20 @@ class Neo4jLoader:
     def create_vector_index(self, session, dimensions: int) -> None:
         """Idempotent - safe to call on every load_graph(). Only meaningful
         once chunks carry an `embedding` property (see load_chunks)."""
-        session.run(
-            """
-            CREATE VECTOR INDEX chunk_embedding IF NOT EXISTS
-            FOR (c:Chunk) ON c.embedding
-            OPTIONS {indexConfig: {
-                `vector.dimensions`: $dimensions,
-                `vector.similarity_function`: 'cosine'
-            }}
-            """,
-            dimensions=dimensions,
+        session.execute_write(
+            lambda tx: tx.run(
+                """
+                CREATE VECTOR INDEX chunk_embedding IF NOT EXISTS
+                FOR (c:Chunk) ON c.embedding
+                OPTIONS {indexConfig: {
+                    `vector.dimensions`: $dimensions,
+                    `vector.similarity_function`: 'cosine'
+                }}
+                """,
+                dimensions=dimensions,
+            ).consume()
         )
-        logger.info("Vector index ensured (chunk_embedding, dimensions=%d)", dimensions)
+        logger.info("graph_operation operation=create_vector_index dimensions=%d", dimensions)
 
     def load_entities(self, session, entities: list[dict]) -> int:
         query = """
@@ -152,7 +234,7 @@ class Neo4jLoader:
             MATCH (e:Entity {{id: row.id}})
             SET e:{safe_label}
             """
-            session.run(label_query, rows=[{"id": r["id"]} for r in rows])
+            self._run_batched(session, label_query, [{"id": r["id"]} for r in rows])
 
         return count
 
@@ -195,8 +277,88 @@ class Neo4jLoader:
             total += self._run_batched(session, query, rows)
         return total
 
+    def load_page_hierarchy(self, session, rows: list[dict]) -> int:
+        """Loads page-tree lineage/provenance as CHILD_OF_PAGE edges between
+        :Document nodes. This is a brand-new relationship type never
+        referenced by search_chunks/get_mentioned_entities/get_neighbors -
+        those only ever match :Entity/:Chunk nodes and
+        ALLOWED_RELATIONSHIP_TYPES, so CHILD_OF_PAGE is retrieval-blind by
+        construction, the same governance pattern as :CandidateEntity."""
+        query = """
+        UNWIND $rows AS row
+        MATCH (child:Document {id: row.child_id})
+        MATCH (parent:Document {id: row.parent_id})
+        MERGE (child)-[:CHILD_OF_PAGE]->(parent)
+        """
+        return self._run_batched(session, query, rows)
+
+    def load_page_links(self, session, rows: list[dict]) -> int:
+        """Loads MYDET's in-text decision-tree links as LEADS_TO edges
+        between :Document nodes, with the triggering answer as an edge
+        property. Same governance/retrieval-blind pattern as
+        load_page_hierarchy: not in ALLOWED_RELATIONSHIP_TYPES, never
+        gated by candidate review, never matched by get_neighbors (Entity-
+        only). See get_linked_documents for the Document-level traversal
+        counterpart to get_neighbors."""
+        query = """
+        UNWIND $rows AS row
+        MATCH (source:Document {id: row.source_id})
+        MATCH (target:Document {id: row.target_id})
+        MERGE (source)-[r:LEADS_TO {answer_label: row.answer_label}]->(target)
+        """
+        return self._run_batched(session, query, rows)
+
+    def clear_candidate_graph(self, session) -> None:
+        """Fully clears the Silver-tier :CandidateEntity subgraph (and its
+        relationships via DETACH DELETE) so each pipeline run's reload
+        reflects the current approve/reject/merge state exactly, mirroring
+        how the Silver JSON export is fully overwritten each run."""
+        session.execute_write(lambda tx: tx.run("MATCH (e:CandidateEntity) DETACH DELETE e").consume())
+        logger.info("graph_operation operation=clear_candidate_graph")
+
+    def load_candidate_entities(self, session, entities: list[dict]) -> int:
+        query = """
+        UNWIND $rows AS row
+        MERGE (e:CandidateEntity {id: row.id})
+        SET e.name = row.name,
+            e.type = row.type,
+            e.source_chunk = row.source_chunk
+        """
+        return self._run_batched(session, query, entities)
+
+    def load_candidate_relationships(self, session, entity_relationships: list[dict]) -> int:
+        # A single generic relationship type keeps the candidate tier out of
+        # ALLOWED_RELATIONSHIP_TYPES entirely - the real semantic type is
+        # stored as a property, not interpolated into Cypher.
+        query = """
+        UNWIND $rows AS row
+        MATCH (a:CandidateEntity {id: row.source})
+        MATCH (b:CandidateEntity {id: row.target})
+        MERGE (a)-[r:CANDIDATE_RELATIONSHIP]->(b)
+        SET r.relationship_type = row.relationship,
+            r.source_chunk = row.source_chunk
+        """
+        return self._run_batched(session, query, entity_relationships)
+
+    def load_candidate_graph(self, graph: dict) -> dict:
+        """Load a Silver-tier candidate graph JSON document (as produced by
+        review.candidate_graph.build_candidate_graph()). Returns a stats
+        dict. No document/chunk nodes - candidate graphs only ever carry
+        entities and relationships."""
+        stats = {}
+        with self._driver.session(database=self.database) as session:
+            self.clear_candidate_graph(session)
+            stats["candidate_entities_loaded"] = self.load_candidate_entities(
+                session, graph["nodes"]["entities"]
+            )
+            stats["candidate_relationships_loaded"] = self.load_candidate_relationships(
+                session, graph["relationships"]["entity_relationships"]
+            )
+        return stats
+
     def search_chunks(self, session, query_vector: list[float], top_k: int) -> list[dict]:
-        result = session.run(
+        result = self._run_read(
+            session,
             """
             CALL db.index.vector.queryNodes('chunk_embedding', $top_k, $query_vector)
             YIELD node, score
@@ -210,7 +372,8 @@ class Neo4jLoader:
         return [dict(record) for record in result]
 
     def get_mentioned_entities(self, session, chunk_ids: list[str]) -> list[dict]:
-        result = session.run(
+        result = self._run_read(
+            session,
             """
             MATCH (c:Chunk)-[:MENTIONS]->(e:Entity)
             WHERE c.id IN $chunk_ids
@@ -223,7 +386,8 @@ class Neo4jLoader:
     def get_neighbors(self, session, entity_ids: list[str], hops: int, limit: int) -> dict:
         safe_hops = max(1, min(int(hops), _MAX_HOPS))
         safe_limit = max(1, min(int(limit), _MAX_NEIGHBOR_LIMIT))
-        result = session.run(
+        result = self._run_read(
+            session,
             """
             MATCH (e:Entity)-[rels*1..%d]-(n:Entity)
             WHERE e.id IN $entity_ids AND NOT n.id IN $entity_ids
@@ -254,6 +418,54 @@ class Neo4jLoader:
             )
         return {"entities": list(entities.values()), "paths": paths}
 
+    def get_linked_documents(self, session, document_ids: list[str], hops: int, limit: int) -> dict:
+        """Document-level counterpart to get_neighbors: forward-only
+        traversal of LEADS_TO edges from the given documents (the pages a
+        chunk came from) to the pages they lead to next. Forward-only
+        (not undirected like get_neighbors) because retrieval wants "what
+        happens next", not "how did we get here". Same defensive bounds
+        as get_neighbors."""
+        safe_hops = max(1, min(int(hops), _MAX_HOPS))
+        safe_limit = max(1, min(int(limit), _MAX_NEIGHBOR_LIMIT))
+        result = self._run_read(
+            session,
+            """
+            MATCH (d:Document)-[rels:LEADS_TO*1..%d]->(n:Document)
+            WHERE d.id IN $document_ids AND NOT n.id IN $document_ids
+            RETURN DISTINCT n.id AS document_id, n.name AS name,
+                   d.name AS source_name,
+                   [rel IN rels | rel.answer_label] AS answer_labels
+            LIMIT $limit
+            """
+            % safe_hops,
+            document_ids=document_ids,
+            limit=safe_limit,
+        )
+        documents: dict[str, dict] = {}
+        paths: list[dict] = []
+        for record in result:
+            row = dict(record)
+            documents[row["document_id"]] = {
+                "document_id": row["document_id"],
+                "name": row["name"],
+            }
+            paths.append(
+                {
+                    "source_name": row["source_name"],
+                    "answer_labels": row["answer_labels"],
+                    "target_name": row["name"],
+                }
+            )
+        return {"documents": list(documents.values()), "paths": paths}
+
+    def query_graph(self, cypher: str, params: dict | None = None) -> list[dict]:
+        """Generic parameterized read-only escape hatch. Not used by any
+        retrieval path today - callers are responsible for ensuring the
+        Cypher they pass is read-only."""
+        with self._driver.session(database=self.database) as session:
+            result = self._run_read(session, cypher, **(params or {}))
+            return [dict(record) for record in result]
+
     def load_graph(self, graph: dict) -> dict:
         """Load a full graph JSON document (as produced by graph_builder).
         Returns a stats dict of nodes/relationships loaded."""
@@ -280,6 +492,12 @@ class Neo4jLoader:
             stats["entity_relationships_loaded"] = self.load_entity_relationships(
                 session, graph["relationships"]["entity_relationships"]
             )
+            stats["page_hierarchy_loaded"] = self.load_page_hierarchy(
+                session, graph["relationships"].get("page_hierarchy", [])
+            )
+            stats["page_links_loaded"] = self.load_page_links(
+                session, graph["relationships"].get("page_links", [])
+            )
 
         stats["nodes_loaded"] = (
             stats["documents_loaded"] + stats["chunks_loaded"] + stats["entities_loaded"]
@@ -288,5 +506,7 @@ class Neo4jLoader:
             stats["has_chunk_loaded"]
             + stats["mentions_loaded"]
             + stats["entity_relationships_loaded"]
+            + stats["page_hierarchy_loaded"]
+            + stats["page_links_loaded"]
         )
         return stats

@@ -13,9 +13,7 @@ from pipeline.context import PipelineContext
 from pipeline.stages import (
     approval_stage,
     chunking_stage,
-    entity_extraction_stage,
     extraction_stage,
-    relationship_extraction_stage,
 )
 from pipeline.stages.approval_stage import ApprovalStage
 from pipeline.stages.candidate_graph_stage import CandidateGraphStage
@@ -118,6 +116,7 @@ def _fresh_ctx(storage, **providers_) -> PipelineContext:
         approval_provider=providers_.get("approval_provider"),
         ontology_provider=providers_.get("ontology_provider"),
         graph_provider=providers_.get("graph_provider"),
+        extraction_provider=providers_.get("extraction_provider"),
         ontology_schema=providers_.get("ontology_schema", {}),
     )
 
@@ -186,54 +185,59 @@ def test_embedding_stage_reads_from_storage_not_ctx():
     assert storage.written["embeddings"] == result.embeddings
 
 
-def test_entity_extraction_stage_reads_from_storage_not_ctx(monkeypatch):
-    received = {}
+class FakeExtractionProvider:
+    def __init__(self, entities_result=None, relationships_result=None):
+        self._entities_result = entities_result
+        self._relationships_result = relationships_result
+        self.extract_entities_calls: list[tuple] = []
+        self.extract_relationships_calls: list[tuple] = []
 
-    def fake_extract_entities(chunks, schema):
-        received["chunks"] = chunks
-        received["schema"] = schema
-        return ([{"id": "e1", "type": "System", "name": "Foo"}], [{"entity_id": "e1", "chunk_id": "c1"}])
+    def extract_entities(self, chunks, ontology):
+        self.extract_entities_calls.append((chunks, ontology))
+        return self._entities_result
 
-    monkeypatch.setattr(entity_extraction_stage.entity_extractor, "extract_entities", fake_extract_entities)
+    def extract_relationships(self, chunks, entities, mentions, ontology):
+        self.extract_relationships_calls.append((chunks, entities, mentions, ontology))
+        return self._relationships_result
+
+
+def test_entity_extraction_stage_reads_from_storage_not_ctx():
+    extraction_provider = FakeExtractionProvider(
+        entities_result=(
+            [{"id": "e1", "type": "System", "name": "Foo"}],
+            [{"entity_id": "e1", "chunk_id": "c1"}],
+        )
+    )
 
     chunks = [{"chunk_id": "c1", "content": "hello", "document": "d1"}]
     storage = FakeStorageProvider(chunks=chunks)
-    ctx = _fresh_ctx(storage, ontology_schema={"types": ["System"]})
+    ctx = _fresh_ctx(
+        storage, extraction_provider=extraction_provider, ontology_schema={"types": ["System"]}
+    )
     assert ctx.chunks == [] and ctx.entities == []
 
     result = EntityExtractionStage().run(ctx)
 
-    assert received["chunks"] == chunks
-    assert received["schema"] == {"types": ["System"]}
+    assert extraction_provider.extract_entities_calls == [(chunks, {"types": ["System"]})]
     assert result.entities == [{"id": "e1", "type": "System", "name": "Foo"}]
     assert storage.written["entities"] == (result.entities, result.mentions)
 
 
-def test_relationship_extraction_stage_reads_from_storage_not_ctx(monkeypatch):
-    received = {}
-
-    def fake_extract_relationships(chunks, entities, mentions, schema):
-        received.update(chunks=chunks, entities=entities, mentions=mentions, schema=schema)
-        return [{"source": "e1", "relationship": "USES", "target": "e2", "source_chunk": "c1"}]
-
-    monkeypatch.setattr(
-        relationship_extraction_stage.relationship_extractor,
-        "extract_relationships",
-        fake_extract_relationships,
+def test_relationship_extraction_stage_reads_from_storage_not_ctx():
+    extraction_provider = FakeExtractionProvider(
+        relationships_result=[{"source": "e1", "relationship": "USES", "target": "e2", "source_chunk": "c1"}]
     )
 
     chunks = [{"chunk_id": "c1", "content": "hello", "document": "d1"}]
     entities = [{"id": "e1", "type": "System", "name": "Foo"}]
     mentions = [{"entity_id": "e1", "chunk_id": "c1"}]
     storage = FakeStorageProvider(chunks=chunks, entities=(entities, mentions))
-    ctx = _fresh_ctx(storage)
+    ctx = _fresh_ctx(storage, extraction_provider=extraction_provider)
     assert ctx.chunks == [] and ctx.entities == [] and ctx.mentions == []
 
     result = RelationshipExtractionStage().run(ctx)
 
-    assert received["chunks"] == chunks
-    assert received["entities"] == entities
-    assert received["mentions"] == mentions
+    assert extraction_provider.extract_relationships_calls == [(chunks, entities, mentions, {})]
     assert result.relationships == [{"source": "e1", "relationship": "USES", "target": "e2", "source_chunk": "c1"}]
     assert storage.written["relationships"] == result.relationships
 
@@ -279,6 +283,15 @@ class FakeApprovalProvider:
         return self._relationships
 
 
+class FakeGraphProvider:
+    def __init__(self) -> None:
+        self.candidate_graph_built_with: dict | None = None
+
+    def build_candidate_graph(self, graph):
+        self.candidate_graph_built_with = graph
+        return {"candidate_entities_loaded": 0, "candidate_relationships_loaded": 0}
+
+
 def test_candidate_graph_stage_reads_from_approval_provider_not_ctx():
     from review.models import CandidateEntity, CandidateRelationship, WorkflowStatus
 
@@ -300,7 +313,8 @@ def test_candidate_graph_stage_reads_from_approval_provider_not_ctx():
     ]
     storage = FakeStorageProvider()
     approval_provider = FakeApprovalProvider(entities, relationships)
-    ctx = _fresh_ctx(storage, approval_provider=approval_provider)
+    graph_provider = FakeGraphProvider()
+    ctx = _fresh_ctx(storage, approval_provider=approval_provider, graph_provider=graph_provider)
     assert ctx.candidate_graph is None
 
     result = CandidateGraphStage().run(ctx)
@@ -308,3 +322,4 @@ def test_candidate_graph_stage_reads_from_approval_provider_not_ctx():
     assert result.candidate_graph["stats"]["entities"] == 2
     assert result.candidate_graph["stats"]["entity_relationships"] == 1
     assert storage.written["candidate_graph"] == result.candidate_graph
+    assert graph_provider.candidate_graph_built_with == result.candidate_graph

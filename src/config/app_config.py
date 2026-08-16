@@ -40,6 +40,15 @@ class EmbeddingConfig:
 
 
 @dataclass
+class ExtractionConfig:
+    """Entity/relationship extraction backend - resolves to an
+    ExtractionProvider (see src/providers/extraction_provider.py)."""
+
+    provider: str = "ontology_rules"
+    options: dict = field(default_factory=dict)
+
+
+@dataclass
 class ApprovalConfig:
     provider: str = "local"
     options: dict = field(default_factory=dict)
@@ -85,6 +94,17 @@ class LLMConfig:
 
 
 @dataclass
+class AiConfig:
+    """Sugar only: `mode` fills in embedding/extraction/llm `provider:`
+    defaults (see _apply_ai_mode_defaults below) for any of those sections
+    that didn't explicitly set their own `provider:` in config.yaml. The
+    per-section `provider:` key remains the only value any factory/stage
+    ever reads - this is not a second config surface."""
+
+    mode: str | None = None
+
+
+@dataclass
 class RetrievalConfig:
     """Tunables for src/retrieval/graphrag_service.py. Not a provider
     section (no swappable backend today - Neo4j-only) so it has no
@@ -93,15 +113,18 @@ class RetrievalConfig:
     top_k_chunks: int = 8
     graph_expansion_hops: int = 1
     max_neighbors: int = 20
-    agent_timeout_seconds: int = 60
+    page_link_hops: int = 2
+    agent_timeout_seconds: int = 240
     max_query_length: int = 4000
 
 
 @dataclass
 class AppConfig:
+    environment: str = "local"
     storage: StorageConfig = field(default_factory=StorageConfig)
     document_source: DocumentSourceConfig = field(default_factory=DocumentSourceConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
+    extraction: ExtractionConfig = field(default_factory=ExtractionConfig)
     approval: ApprovalConfig = field(default_factory=ApprovalConfig)
     ontology: OntologyConfig = field(default_factory=OntologyConfig)
     graph: GraphConfig = field(default_factory=GraphConfig)
@@ -109,6 +132,7 @@ class AppConfig:
     auth: AuthConfig = field(default_factory=AuthConfig)
     observability: ObservabilityConfig = field(default_factory=ObservabilityConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    ai: AiConfig = field(default_factory=AiConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
 
     @property
@@ -153,7 +177,10 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     document_source_provider = document_source_raw.pop("provider", "local_folder")
 
     embedding_raw = dict(raw.get("embedding") or {})
-    embedding_provider = embedding_raw.pop("provider", "local_noop")
+    embedding_explicit_provider = embedding_raw.pop("provider", None)
+
+    extraction_raw = dict(raw.get("extraction") or {})
+    extraction_explicit_provider = extraction_raw.pop("provider", None)
 
     graph_raw = dict(raw.get("graph") or {})
     graph_provider = graph_raw.pop("provider", "neo4j")
@@ -168,11 +195,20 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     auth_provider = auth_raw.pop("provider", "local")
 
     llm_raw = dict(raw.get("llm") or {})
-    llm_provider = llm_raw.pop("provider", "azure_openai")
+    llm_explicit_provider = llm_raw.pop("provider", None)
+
+    ai_raw = dict(raw.get("ai") or {})
+    ai_mode = ai_raw.get("mode")
+    mode_default_provider = {"local": "ollama", "azure": "azure_openai"}.get(ai_mode)
+
+    embedding_provider = embedding_explicit_provider or mode_default_provider or "local_noop"
+    extraction_provider = extraction_explicit_provider or mode_default_provider or "ontology_rules"
+    llm_provider = llm_explicit_provider or mode_default_provider or "azure_openai"
 
     retrieval_raw = dict(raw.get("retrieval") or {})
 
     return AppConfig(
+        environment=raw.get("environment", "local"),
         storage=StorageConfig(
             provider=storage_provider, root=storage_root, options=storage_raw
         ),
@@ -180,6 +216,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             provider=document_source_provider, options=document_source_raw
         ),
         embedding=EmbeddingConfig(provider=embedding_provider, options=embedding_raw),
+        extraction=ExtractionConfig(provider=extraction_provider, options=extraction_raw),
         approval=ApprovalConfig(provider=approval_provider, options=approval_raw),
         ontology=OntologyConfig(**(raw.get("ontology") or {})),
         graph=GraphConfig(provider=graph_provider, options=graph_raw),
@@ -187,5 +224,6 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         auth=AuthConfig(provider=auth_provider, options=auth_raw),
         observability=ObservabilityConfig(**(raw.get("observability") or {})),
         llm=LLMConfig(provider=llm_provider, options=llm_raw),
+        ai=AiConfig(mode=ai_mode),
         retrieval=RetrievalConfig(**retrieval_raw),
     )

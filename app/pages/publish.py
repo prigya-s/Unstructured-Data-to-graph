@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 import providers
-from common import get_logger, get_repo, reviewer_name
+from common import get_graph_provider, get_logger, get_repo, reviewer_name
 from config import load_config
 from pipeline.context import PipelineContext
 from pipeline.runner import PipelineRunner
@@ -25,7 +25,8 @@ def _build_context() -> PipelineContext:
         embedding_provider=providers.get_embedding_provider(config),
         approval_provider=providers.get_approval_provider(config),
         ontology_provider=providers.get_ontology_provider(config),
-        graph_provider=providers.get_graph_provider(config),
+        graph_provider=get_graph_provider(),
+        extraction_provider=providers.get_extraction_provider(config),
     )
 
 st.title("Publish")
@@ -74,21 +75,21 @@ if st.button("Generate Approved Ontology"):
         st.error(str(exc))
 
 st.divider()
-st.subheader("Step 2: Publish to Neo4j")
+st.subheader("Step 2: Publish to the Graph Database")
 st.caption(
     "Loads only approved entities and relationships into the graph database. Previously "
     "published items are updated in place - safe to run more than once."
 )
-if st.button("Generate Neo4j Graph", type="primary"):
+if st.button("Generate Graph", type="primary"):
     try:
         ctx = _RUNNER.run_stage("graph", _build_context())
         stats = ctx.publish_stats
         st.success(
             f"Published {stats['entities_loaded']} entities and "
-            f"{stats['relationships_loaded']} relationships to Neo4j."
+            f"{stats['relationships_loaded']} relationships to the graph database."
         )
         logger.info(
-            "Graph published to Neo4j by %s: %d nodes, %d relationships",
+            "Graph published by %s: %d nodes, %d relationships",
             reviewer_name(),
             stats["nodes_loaded"],
             stats["relationships_loaded"],
@@ -96,8 +97,10 @@ if st.button("Generate Neo4j Graph", type="primary"):
     except ValueError as exc:
         st.error(str(exc))
     except Exception:  # noqa: BLE001 - surface connection errors as a friendly message
-        logger.exception("Publish to Neo4j failed")
+        logger.exception("Publish to the graph database failed")
         st.error(
-            "Could not publish to Neo4j. Ensure Neo4j Desktop is running and check the "
-            "credentials in your .env file, or check the log file for details."
+            "Could not publish to the graph database. If you're using a local Neo4j "
+            "instance, make sure Neo4j Desktop/Docker is running; if you're using Neo4j "
+            "AuraDB, check your internet connection. Either way, check the credentials in "
+            "your .env file, or check the log file for details."
         )

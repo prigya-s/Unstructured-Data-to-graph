@@ -1,8 +1,8 @@
 """
 GraphStage: silver markdown/chunks + gold mentions + OntologyProvider's
 approved view -> graph.graph_builder.build_graph() (unmodified) ->
-StorageProvider.write_graph_export() (gold) + GraphProvider.publish()
-(Neo4j/Cosmos).
+StorageProvider.write_graph_export() (gold) +
+GraphProvider.build_production_graph() (Neo4j/Neo4j Aura/Cosmos).
 
 Runs as its own process (main.py publish-graph), so it reads its documents/
 chunks/mentions back from StorageProvider rather than relying on in-memory
@@ -47,5 +47,5 @@ class GraphStage(PipelineStage):
         ctx.storage.write_graph_export(graph_export)
         ctx.graph_export = graph_export
 
-        ctx.publish_stats = ctx.graph_provider.publish(graph_export)
+        ctx.publish_stats = ctx.graph_provider.build_production_graph(graph_export)
         return ctx

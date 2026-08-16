@@ -7,4 +7,8 @@ tqdm>=4.66.4,<5.0.0
 streamlit>=1.35.0,<2.0.0
 pytest>=8.0,<9.0
 agent-framework>=1.0.0,<2.0.0
-agent-framework-azure-ai>=1.0.0,<2.0.0
+# agent-framework-azure-ai has no stable >=1.0.0 release yet (only rc/beta
+# builds) - pin the latest release candidate explicitly so `pip install -r
+# requirements.txt` succeeds without --pre. Bump this pin as newer rc/stable
+# builds ship.
+agent-framework-azure-ai==1.0.0rc6

@@ -5,6 +5,12 @@
 # anything else. Switching to Databricks is a matter of changing the
 # provider values below (see config.databricks.example.yaml), not editing
 # code.
+
+# Free-text tag for observability only (logged once at startup) - never
+# branches provider selection. Set to whatever distinguishes your
+# deployments, e.g. local | staging | production.
+environment: local
+
 storage:
   provider: local  # local | databricks_volumes | unity_catalog
   root: ./lakehouse
@@ -16,12 +22,22 @@ storage:
   #   schema: kg_schema
 
 document_source:
-  provider: local_folder  # local_folder | confluence | sharepoint
+  # local_folder: plain files under ./docs
+  # confluence: live Confluence REST API (stub, not yet implemented)
+  # confluence_export: a pre-exported, flattened Confluence page tree on
+  #   disk (one JSON file per page, nested dirs mirroring parent/child
+  #   pages) - e.g. docs/MYDET
+  # sharepoint: not yet implemented
+  provider: confluence_export  # local_folder | confluence | confluence_export | sharepoint
   local_folder:
     path: ./docs
+  confluence_export:
+    path: ./docs/MYDET
+  # To go back to the local demo docs, set provider: local_folder above -
+  # no other change needed.
 
 embedding:
-  provider: local_noop  # local_noop | databricks | azure_openai
+  provider: ollama  # local_noop | databricks | azure_openai | ollama
   # databricks:               # only read when provider: databricks - see config.databricks.example.yaml
   #   host_env: DATABRICKS_HOST
   #   token_env: DATABRICKS_TOKEN
@@ -34,6 +50,27 @@ embedding:
   #   deployment: text-embedding-3-large
   #   api_version: "2024-06-01"
   #   batch_size: 64
+  ollama:                     # only read when provider: ollama (or ai.mode: local, see below)
+    base_url: http://localhost:11434
+    model: bge-m3
+
+extraction:
+  # Entity/relationship extraction backend - resolves to an
+  # ExtractionProvider (see src/providers/extraction_provider.py).
+  provider: hybrid  # ontology_rules | ollama | azure_openai | hybrid
+  # ontology_rules is the deterministic, offline default (unchanged
+  # keyword-matching behavior driven by ontology.yaml) - no options needed.
+  # hybrid runs ontology_rules on every chunk first (fast, zero LLM cost)
+  # and only falls back to the ollama model below for chunks where the
+  # rule-based pass found too few entities - see
+  # src/providers/hybrid_extraction_provider.py.
+  hybrid:
+    min_entities_per_chunk: 1  # chunks with fewer rule-based entities than this fall back to the LLM
+  ollama:                    # only read when provider: ollama/hybrid (or ai.mode: local)
+    base_url: http://localhost:11434
+    model: qwen3:14b
+    request_timeout_seconds: 900  # CPU-only inference on a 14B model is slow, and Ollama may need to cold-load the 9GB model; raise from the 120s default
+    batch_size: 8  # chunks grouped into one /api/chat call - most chunks are far smaller than the model's context window
 
 approval:
   provider: local  # local | ontobricks
@@ -49,12 +86,32 @@ ontology:
   schema_path: ontology/ontology.yaml  # relative to src/
 
 graph:
-  provider: neo4j  # neo4j | cosmos
+  # neo4j: local Neo4j Desktop/Docker (NEO4J_URI=bolt://... or neo4j://...)
+  # neo4j_aura: Neo4j AuraDB (NEO4J_URI=neo4j+s://<dbid>.databases.neo4j.io)
+  # cosmos: not yet implemented (stub)
+  # mock: in-memory, no live database - useful for local dev/tests
+  # Switching between local Neo4j and Aura is a config/env change only -
+  # both use the same `neo4j` options block below and the same
+  # Neo4jGraphProvider code path.
+  provider: neo4j  # neo4j | neo4j_aura | cosmos | mock
   neo4j:
     uri_env: NEO4J_URI
     user_env: NEO4J_USER
     password_env: NEO4J_PASSWORD
     database_env: NEO4J_DATABASE
+  # To run against Aura instead, set provider: neo4j_aura above and point
+  # NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD (same env var names, same `neo4j:`
+  # options block - only the values change) at your Aura instance:
+  #   NEO4J_URI=neo4j+s://<dbid>.databases.neo4j.io
+  #   NEO4J_USER=neo4j
+  #   NEO4J_PASSWORD=<generated at instance creation>
+  # graph:
+  #   provider: neo4j_aura
+  #   neo4j:
+  #     uri_env: NEO4J_URI
+  #     user_env: NEO4J_USER
+  #     password_env: NEO4J_PASSWORD
+  #     database_env: NEO4J_DATABASE
 
 secrets:
   provider: env  # env | azure_key_vault
@@ -69,12 +126,27 @@ observability:
 llm:
   # Chat-completion backend for the GraphRAG conversational layer - resolves
   # to a Microsoft Agent Framework chat client (see src/providers/llm_provider.py).
-  provider: azure_openai  # azure_openai
+  provider: ollama  # azure_openai | ollama
   azure_openai:
     endpoint_env: AZURE_OPENAI_ENDPOINT
     api_key_env: AZURE_OPENAI_API_KEY
     deployment: gpt-4o
     api_version: "2024-06-01"
+  ollama:                     # only read when provider: ollama (or ai.mode: local)
+    base_url: http://localhost:11434
+    model: llama3.1:8b
+
+ai:
+  # Sugar only: mode fills in the embedding/extraction/llm provider values
+  # above whenever a section's own `provider:` isn't explicitly set (an
+  # explicit `provider:` in a section always wins). Not a parallel config
+  # surface - every factory/stage still only ever reads the per-section
+  # `provider:` key.
+  #   mode: local  -> embedding/extraction/llm default to "ollama"
+  #   mode: azure  -> embedding/extraction/llm default to "azure_openai"
+  # Leave unset (or omit this block) to use each section's own static
+  # default with no mode-based override.
+  mode: local
 
 retrieval:
   # Tunables for the GraphRAG retrieval pipeline (src/retrieval/graphrag_service.py).
@@ -82,3 +154,4 @@ retrieval:
   top_k_chunks: 8
   graph_expansion_hops: 1
   max_neighbors: 20
+  page_link_hops: 2  # how many LEADS_TO hops ahead to surface as "next steps" in a chat answer

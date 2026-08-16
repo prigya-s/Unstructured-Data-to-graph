@@ -211,8 +211,6 @@ picture.
 ## 5. Add documents
 
 Drop your PDF / DOCX / PPTX / TXT / HTML / Markdown files into `docs/`.
-Two sample documents (`network_architecture.md`, `payment_platform.txt`)
-are included so you can run the pipeline immediately.
 
 ## 6. Run ingestion
 
