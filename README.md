@@ -612,6 +612,21 @@ See [docs/architecture/graphrag_retrieval.md](docs/architecture/graphrag_retriev
 for the full architecture diagram, sequence diagram, and implementation
 plan.
 
+## Cross-cutting design concerns
+
+These five properties aren't one module each - they're addressed by small,
+specific mechanisms spread across the pipeline. The table below defines
+each in one sentence, then explains in plain words how this codebase
+actually handles it.
+
+| Concern | Definition | How it's handled here |
+|---|---|---|
+| **Idempotency** | Running the same operation more than once produces the same end state as running it once. | Re-running `ingest` skips any entity/relationship whose status is already `APPROVED`/`REJECTED`/`MERGED` (`candidate_builder.py`'s `existing_entities` check), and every Neo4j write uses `MERGE`, not `CREATE` (`neo4j_loader.py`) - so replaying ingestion or publishing never creates duplicate nodes, edges, or candidates. |
+| **Cardinality** | The rule for how many relationships of a given type can exist between two entities. | Before a relationship becomes a candidate, everything found for the same `(source, relationship_type, target)` triple is collapsed into one row (`candidate_builder.py`'s `deduped` dict) - and once in Neo4j, `MERGE (a)-[r:TYPE]->(b)` means there can only ever be one edge of a given type between the same ordered pair, no matter how many chunks or ingestion runs mentioned it. |
+| **Constraints & domain rules** | The fixed set of entity/relationship types and business-specific matching rules that decide what gets extracted and loaded at all. | `ontology.yaml` is the single source of truth: `entity_types` (with keyword lists), `relationship_types` (with trigger phrases), and `domain_gazetteer` (typed acronyms like `IVR`→`Channel`) are all read from this one file by the extractors at runtime - nothing is hardcoded in Python. As a second, independent gate, `neo4j_loader.py` keeps its own `ALLOWED_RELATIONSHIP_TYPES` allowlist and silently drops anything not on it before it reaches Neo4j, plus uniqueness constraints on `Document.id`/`Chunk.id`/`Entity.id` so bad data can't even be written twice. |
+| **Supersession** | When one record is replaced by another, the system must know which one is now authoritative. | A duplicate entity is marked `status: MERGED` with a `merged_into` pointer to the surviving entity's id (`review/models.py`). `merge_resolution.py`'s `build_merge_map()`/`resolve_entity_id()` follow that pointer everywhere a graph is built, so a merged entity's mentions and relationships are always attributed to its survivor, never left pointing at the superseded id. Once `MERGED`, an entity is also frozen the same way `APPROVED`/`REJECTED` ones are - a later `ingest` run will never resurrect it. |
+| **Temporality** | Tracking not just the current state of something, but when it changed and what it looked like before. | Every approve/reject/edit/merge action is appended as a timestamped `HistoryEntry` (`review/models.py`/`candidate_builder.py`'s `_now_iso()`) - so an entity's full history, not just its current status, is always visible. Across runs, `main.py`'s `_read_previous_snapshot()`/`_log_ingestion_diff_report()` compare this `ingest` run's documents (by content hash), entities, and relationships against the previous run and log what was added, changed, or removed - so an ingestion run always knows what changed since last time, not just what exists now. |
+
 ## Re-running
 
 `ingest` is idempotent for candidates: entities are upserted by `id`, and
