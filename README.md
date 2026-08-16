@@ -18,12 +18,16 @@ Production Graph (Gold) -> Neo4j -> Neo4j Visualization
                         Graph" (Streamlit / CLI)
 ```
 
-Nothing reaches the Production Graph or Neo4j until a business reviewer has
-approved it. Rejected, pending, or still-ambiguous entities never appear in
-Neo4j. Before approval, business users can already explore the Silver-layer
-**Candidate Graph** — the graph as the extraction engine currently
-understands it — and see exactly what would change if pending items were
-approved, via **Graph Impact Analysis** and **Graph Difference View**. See
+Nothing reaches the **Production Graph** (the unlabeled Gold nodes/
+relationships that answers are ever drawn from) until a business reviewer
+has approved it. Rejected, pending, or still-ambiguous entities never
+appear there. Before approval, business users can already explore the
+Silver-layer **Candidate Graph** — the graph as the extraction engine
+currently understands it, loaded into the same Neo4j instance under
+distinct `:CandidateEntity`/`:CANDIDATE_RELATIONSHIP` labels that retrieval
+and the Production Graph page never query — and see exactly what would
+change if pending items were approved, via **Graph Impact Analysis** and
+**Graph Difference View**. See
 [Graph Governance](#graph-governance-silvergold-layers) below.
 
 Once a graph is published, business users can ask it questions directly —
@@ -36,8 +40,10 @@ the approved Production Graph only. See
 
 Every pipeline stage talks to a **provider interface**, not a hardcoded
 path or environment variable. `config.yaml` selects which implementation of
-each provider is used - today that's always the local one; a Databricks
-deployment is a config change plus implementing the corresponding stub. See
+each provider is used - by default a mix of local (Neo4j, local storage)
+and real local-AI (Ollama for embeddings/extraction/chat) implementations,
+with Azure OpenAI available as a drop-in alternative; a Databricks
+deployment is a config change plus implementing the remaining stubs. See
 [docs/architecture/](docs/architecture/) for the full picture.
 
 ```
@@ -53,7 +59,7 @@ kg-local/
 │   ├── silver/
 │   │   ├── markdown/             # per-document .md files + markdown.json manifest
 │   │   ├── chunks/                # chunks.json
-│   │   ├── embeddings/             # embeddings.json (no-op locally - see Embeddings below)
+│   │   ├── embeddings/             # embeddings.json (real vectors via Ollama/Azure OpenAI by default - see Embeddings below)
 │   │   └── candidate_graph/         # candidate_graph.json - the SILVER graph: every
 │   │       │                          # non-rejected candidate entity/relationship,
 │   │       │                          # merges resolved, built by graph_builder from the
@@ -78,23 +84,25 @@ kg-local/
 │   ├── contracts/                 # table-contract dataclasses (documentation/shape only)
 │   ├── providers/                  # provider interfaces + local impls + Databricks/cloud stubs
 │   │   ├── storage_provider.py / local_storage_provider.py / databricks_volumes_provider.py / unity_catalog_provider.py
-│   │   ├── document_source.py / local_folder_source.py / confluence_source.py / sharepoint_source.py
-│   │   ├── embedding_provider.py / local_embedding_provider.py / databricks_embedding_provider.py / azure_openai_embedding_provider.py
-│   │   ├── llm_provider.py / azure_openai_llm_provider.py    # NEW - chat client for the GraphRAG agent
+│   │   ├── document_source.py / local_folder_source.py / confluence_export_source.py / confluence_source.py (stub) / sharepoint_source.py (stub)
+│   │   ├── embedding_provider.py / local_embedding_provider.py (no-op) / ollama_embedding_provider.py / azure_openai_embedding_provider.py / databricks_embedding_provider.py
+│   │   ├── extraction_provider.py / ontology_rules_extraction_provider.py / ollama_extraction_provider.py / azure_openai_extraction_provider.py / hybrid_extraction_provider.py
+│   │   ├── llm_provider.py / ollama_llm_provider.py / azure_openai_llm_provider.py    # chat client for the GraphRAG agent
 │   │   ├── approval_provider.py           # re-exports review.repository.OntologyRepository
 │   │   ├── ontology_provider.py / local_ontology_provider.py
-│   │   └── graph_provider.py / neo4j_graph_provider.py / cosmos_graph_provider.py   # +search_chunks/get_mentioned_entities/get_neighbors
+│   │   ├── secrets_provider.py / auth_provider.py
+│   │   └── graph_provider.py / neo4j_graph_provider.py / neo4j_aura_graph_provider.py / cosmos_graph_provider.py (stub) / mock_graph_provider.py   # +get_linked_documents/build_candidate_graph/build_production_graph
 │   ├── pipeline/
 │   │   ├── context.py             # PipelineContext (providers + in-memory run state)
 │   │   ├── runner.py                # PipelineRunner: run_all()/run_stage()
 │   │   └── stages/                   # one thin stage per pipeline phase (see below)
 │   ├── extract/docling_parser.py         # UNCHANGED business logic
 │   ├── chunking/semantic_chunker.py       # UNCHANGED business logic
-│   ├── ontology/ontology.yaml
-│   ├── extraction/entity_extractor.py       # UNCHANGED business logic
-│   ├── extraction/relationship_extractor.py  # UNCHANGED business logic
-│   ├── graph/graph_builder.py                 # +optional embedding passthrough on Chunk nodes
-│   ├── graph/neo4j_loader.py                   # +vector index + search_chunks/get_mentioned_entities/get_neighbors
+│   ├── ontology/ontology.yaml                 # +Check/Party/Channel/Topic entity types, +domain_gazetteer (typed acronyms), +REQUIRES/APPLIES_TO
+│   ├── extraction/entity_extractor.py       # +domain_gazetteer lookups, +heading-to-Topic promotion
+│   ├── extraction/relationship_extractor.py  # +REQUIRES/APPLIES_TO trigger-based relationship types
+│   ├── graph/graph_builder.py                 # +optional embedding passthrough on Chunk nodes, +page-link (LEADS_TO) extraction
+│   ├── graph/neo4j_loader.py                   # +vector index + search_chunks/get_mentioned_entities/get_neighbors/get_linked_documents, +CHILD_OF_PAGE/LEADS_TO structural edges
 │   ├── retrieval/                              # NEW - GraphRAG service layer
 │   │   └── graphrag_service.py                   # retrieve_context() -> RetrievalResult, format_context_for_llm()
 │   ├── agents/                                 # NEW - Agent orchestration layer (Microsoft Agent Framework)
@@ -176,11 +184,30 @@ NEO4J_DATABASE=kg-dev
 ```
 
 Edit these values if your local instance uses different credentials or a
-different database name.
+different database name. That's the only `.env` setup required for a fully
+working default install — see below.
 
-To use **Ask the Knowledge Graph** (the GraphRAG retrieval + conversational
-layer — see [GraphRAG Retrieval Layer](#graphrag-retrieval-layer) below) or
-real embeddings instead of the local no-op provider, also set:
+**`config.yaml`'s `ai.mode: local` is the real default AI stack**, backed by
+[Ollama](https://ollama.com/) running locally, not a placeholder. Install
+Ollama, then pull the three models the default config points at:
+
+```powershell
+ollama pull bge-m3        # embedding.ollama.model
+ollama pull qwen3:14b      # extraction.ollama.model (hybrid extraction's LLM fallback)
+ollama pull llama3.1:8b    # llm.ollama.model (chat/GraphRAG agent)
+```
+
+Ollama's own `base_url`/`model` come from `config.yaml` (`embedding.ollama`,
+`extraction.ollama`, `llm.ollama`), not `.env` — no `OLLAMA_*` environment
+variables are needed. With Ollama running, ingestion produces real
+embedding vectors and hybrid (rule-based + LLM-fallback) entity extraction
+out of the box, and `python src/main.py chat` / the **Ask the Knowledge
+Graph** page work without any Azure setup.
+
+**Azure OpenAI is a real, swap-in alternative**, not a fallback path.
+Set `ai.mode: azure` in `config.yaml` (or override `embedding.provider`/
+`extraction.provider`/`llm.provider` individually to `azure_openai`), then
+set:
 
 ```
 AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/
@@ -188,11 +215,13 @@ AZURE_OPENAI_API_KEY=<your-key>
 ```
 
 These are read through the same `SecretsProvider` abstraction as everything
-else — never hardcoded in `config.yaml` — and back both `embedding.provider:
-azure_openai` and `llm.provider: azure_openai` in `config.yaml`. Without
-them, ingestion still works with the local no-op embedding provider, but
-`python src/main.py chat` and the **Ask the Knowledge Graph** page will
-raise a clear configuration error instead of silently failing.
+else — never hardcoded in `config.yaml`.
+
+A third option, `embedding.provider: local_noop` /
+`extraction.provider: ontology_rules`, remains available for a fully
+offline dry run with no model downloads at all: embeddings become
+`embedding_vector: null` pass-throughs and extraction falls back to pure
+keyword/gazetteer matching against `ontology.yaml`.
 
 Optionally set `ONTOLOGY_REPOSITORY_BACKEND=local` (the default) to select
 the storage backend for the review workflow. `ontobricks` is reserved for a
@@ -200,11 +229,16 @@ future OntoBricks integration and currently raises `NotImplementedError` if
 selected — see [Repository abstraction](#repository-abstraction) below.
 
 All of the above is now also mirrored in `config.yaml` at the repo root:
-`approval.provider` (`local` | `ontobricks`), `graph.provider` (`neo4j` |
-`cosmos`) plus `graph.neo4j.uri_env`/`user_env`/`password_env`/`database_env`
-naming *which* environment variables to read (still populated by `.env`
-locally). `config.yaml` is what actually gets read at runtime; the `.env`
-variables above are the values it points at. See
+`embedding.provider` (`local_noop` | `ollama` | `azure_openai` |
+`databricks`), `extraction.provider` (`ontology_rules` | `ollama` |
+`azure_openai` | `hybrid`), `llm.provider` (`ollama` | `azure_openai`),
+`ai.mode` (`local` | `azure`, sugar that fills in the three provider values
+above unless a section overrides it explicitly), `approval.provider`
+(`local` | `ontobricks`), `graph.provider` (`neo4j` | `neo4j_aura` |
+`cosmos` | `mock`) plus `graph.neo4j.uri_env`/`user_env`/`password_env`/
+`database_env` naming *which* environment variables to read (still
+populated by `.env` locally). `config.yaml` is what actually gets read at
+runtime; the `.env` variables above are the values it points at. See
 [docs/architecture/](docs/architecture/) for the full provider/config
 picture.
 
@@ -220,37 +254,59 @@ python src/main.py ingest ./docs
 
 Each step below runs as its own `PipelineStage`, wired together by
 `PipelineRunner` and reading/writing exclusively through the configured
-`StorageProvider`/`DocumentSource` (`LocalStorageProvider`/`LocalFolderSource`
-by default — see [Project structure](#project-structure)):
+`StorageProvider`/`DocumentSource` — by default `LocalStorageProvider` and
+`ConfluenceExportSource` reading the pre-exported page tree under
+`docs/MYDET` (set `document_source.provider: local_folder` in
+`config.yaml` to read plain files from `docs/` instead — see
+[Project structure](#project-structure)):
 
 1. Discover documents (`IngestionStage`) → `lakehouse/bronze/raw_documents/documents.json`
 2. Extract structured Markdown (Docling, `ExtractionStage`) → `lakehouse/silver/markdown/`
 3. Semantically chunk the Markdown (500-800 tokens, 100-token overlap,
    `ChunkingStage`) → `lakehouse/silver/chunks/chunks.json`
 4. Pass chunks through the embedding stage (`EmbeddingStage`) →
-   `lakehouse/silver/embeddings/embeddings.json` — locally this is a
-   documented no-op pass-through (`embedding_vector: null`); there is no
-   embedding-generation logic in this codebase today.
-5. Extract ontology entities (Application, System, Service, Database, API,
-   Process, Team, Technology, Policy, `EntityExtractionStage`) →
-   `lakehouse/gold/entities/{entities,mentions}.json`
-6. Extract ontology relationships (USES, DEPENDS_ON, CONNECTS_TO, OWNS,
-   CONTAINS, IMPLEMENTS, REFERENCES, `RelationshipExtractionStage`) →
+   `lakehouse/silver/embeddings/embeddings.json` — real vectors by default
+   (Ollama `bge-m3` locally, or Azure OpenAI/Databricks if configured); set
+   `embedding.provider: local_noop` for an offline `embedding_vector: null`
+   pass-through instead.
+5. Extract ontology entities (`Document, Application, System, Service,
+   Database, API, Process, Team, Technology, Policy, Role, Product,
+   ExternalPartner, Tool, Check, Party, Channel, Topic`,
+   `EntityExtractionStage`) → `lakehouse/gold/entities/{entities,mentions}.json`.
+   `extraction.provider: hybrid` (the default) runs the deterministic
+   rule-based pass first — including `domain_gazetteer` lookups for bare
+   acronyms (e.g. `IVR`→`Channel`, `SAMM`→`System`) and promoting document
+   section headings to `Topic` entities — and only falls back to the
+   configured LLM (Ollama `qwen3:14b` by default) for chunks where that
+   pass found too few entities.
+6. Extract ontology relationships (`USES, DEPENDS_ON, CONNECTS_TO, OWNS,
+   CONTAINS, IMPLEMENTS, REFERENCES, REFERS_TO, ESCALATES_TO, REQUIRES,
+   APPLIES_TO`, `RelationshipExtractionStage`) →
    `lakehouse/gold/relationships/relationships.json`
 7. Turn extracted entities/relationships into reviewable candidate entities
    (definitions, business meaning, confidence, evidence, ambiguity
    detection, `ApprovalStage`) → stored via the `ApprovalProvider`, i.e.
    `lakehouse/gold/review/candidate_{entities,relationships}.json` locally
 8. Build the **Silver-layer Candidate Graph** from the full candidate set
-   (`CandidateGraphStage`) → `lakehouse/silver/candidate_graph/candidate_graph.json`
-   — the graph as currently understood by the extraction engine, explorable
-   by business users before anything is approved
+   (`CandidateGraphStage`) → `lakehouse/silver/candidate_graph/candidate_graph.json`,
+   **and** load the same candidates into the configured `GraphProvider`
+   (Neo4j by default) under distinct `:CandidateEntity`/
+   `:CANDIDATE_RELATIONSHIP` labels — explorable by business users before
+   anything is approved, and excluded from retrieval by label (see
+   [Graph Governance](docs/architecture/graph_governance.md)). This stage
+   also extracts and loads the structural `CHILD_OF_PAGE` page-hierarchy
+   and `LEADS_TO` page-link relationships (parsed from in-page "see also"
+   style references), which are never gated by review.
 9. Print a summary of files/chunks/entities/relationships/candidates/candidate-graph
-   created
+   created, plus an **ingestion diff report** comparing this run's document/
+   entity/relationship snapshot against the previous run (pages added/
+   changed/removed, entities/relationships gained/lost, orphan pages with
+   no incoming `CHILD_OF_PAGE`/`LEADS_TO` edge).
 
-**Ingestion stops here.** It no longer builds the Production Graph or touches
-Neo4j — that only happens after a business reviewer approves entities (see
-below). A per-run log is written to `logs/ingest_<timestamp>.log`.
+**The Production (Gold) Graph is untouched until a reviewer approves
+entities and publishes** (see below) — only the Candidate Graph, under its
+own Candidate-only labels, is loaded during ingestion. A per-run log is
+written to `logs/ingest_<timestamp>.log`.
 
 ## 7. Review and approve entities
 
@@ -267,7 +323,10 @@ or "Ontology Class" anywhere) with eleven pages:
   for both entities and relationships.
 - **Entity Review** — Business Term, Suggested Definition, Confidence Score,
   Business Meaning, Evidence, Related Terms, Status, with **Approve**,
-  **Reject**, **Edit Definition**, and **Merge With Existing Entity** actions.
+  **Reject**, **Edit Definition**, and **Merge With Existing Entity**
+  actions, plus an **Approve all filtered** bulk action (gated behind a
+  confirmation checkbox) for approving every pending entity in the current
+  filter view at once.
 - **Relationships** (relationship review) — Source Term, Relationship,
   Target Term, Confidence, Evidence, with **Approve**/**Reject** actions.
 - **Ambiguity Resolution** — for terms with more than one possible meaning
@@ -356,11 +415,16 @@ python src/main.py publish-graph
   Neo4j via `GraphProvider` (`Neo4jGraphProvider` wraps the existing,
   unchanged `graph_builder`/`Neo4jLoader` — idempotent, safe to re-run).
 
-Only this Gold-layer output ever reaches `publish-graph`/`GraphProvider`. The
-Silver-layer Candidate Graph (`lakehouse/silver/candidate_graph/`) is built by
-a separate, disjoint code path (`review.candidate_graph.build_candidate_graph`)
-that has no reference to any `GraphProvider` and cannot reach Neo4j — see
-[Graph Governance](#graph-governance-silvergold-layers).
+`publish-graph`/`GraphProvider.build_production_graph()` is the only path
+that ever writes **Gold** (approved-only, unlabeled/production) nodes and
+relationships. The Silver-layer Candidate Graph is also loaded into the
+same graph database during ingestion (`CandidateGraphStage`, step 8 above)
+but under distinct `:CandidateEntity`/`:CANDIDATE_RELATIONSHIP` labels —
+retrieval and Cypher queries used by the review UI's Production Graph page
+only ever match the unlabeled Gold nodes, so Candidate data never leaks
+into an answer even though both live in the same Neo4j instance. See
+[Graph Governance](#graph-governance-silvergold-layers) for exactly how
+that label-based exclusion is enforced.
 
 > **Known limitation:** publishing is additive/idempotent (`MERGE`-based).
 > If an entity is rejected *after* it was already published, its node is
@@ -409,9 +473,13 @@ python src/main.py chat
 ```
 
 or from the Streamlit app's **Ask the Knowledge Graph** page. Both build the
-same agent and require `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_KEY` to be
-set (step 4). See [GraphRAG Retrieval Layer](#graphrag-retrieval-layer)
-below for how a question turns into a grounded, cited answer.
+same agent against whichever `embedding.provider`/`llm.provider` are
+configured — Ollama by default (no extra setup beyond step 4), or Azure
+OpenAI if `ai.mode: azure`/`AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_KEY`
+are set. See [GraphRAG Retrieval Layer](#graphrag-retrieval-layer)
+below for how a question turns into a grounded, cited answer — including a
+"Next steps in this process" pointer to any pages the answer's source
+documents link onward to.
 
 ## Graph Governance (Silver/Gold layers)
 
@@ -435,16 +503,22 @@ and (about to be) live in Neo4j":
   `approved_entities`/`approved_relationships` (written by `OntologyStage`),
   the **Approved Ontology** (`ontology.json`), and the **Production Graph**
   itself (`graph_export.json`, written by `GraphStage` and loaded into Neo4j
-  by `GraphProvider`). This is the only layer ever loaded into
-  `Neo4jGraphProvider` or a future `CosmosGraphProvider`.
+  by `GraphProvider.build_production_graph()`) — unlabeled `:Entity`/
+  relationship nodes, the only ones any retrieval or Cypher query in the
+  review UI ever matches.
 
-**Gating invariant:** the Candidate Graph is built by
-`review.candidate_graph.build_candidate_graph()`, which writes only through
-`StorageProvider.write_candidate_graph()` and never touches a `GraphProvider`.
-Production publishing is a completely separate code path —
+**Gating invariant:** both graphs can live in the same Neo4j instance, but
+under different labels, and only one of them is ever queried for answers.
+`CandidateGraphStage` loads the full candidate set via
+`GraphProvider.build_candidate_graph()` under distinct
+`:CandidateEntity`/`:CANDIDATE_RELATIONSHIP` labels (in addition to writing
+the Silver-layer JSON snapshot via `StorageProvider.write_candidate_graph()`
+for the Candidate Graph page). Production publishing is a separate stage —
 `GraphStage` → `ontology_generator.load_approved_for_graph()` (approved-only)
-→ `GraphProvider`. There is no shared function or code path between the two,
-so the Candidate Graph structurally cannot reach Neo4j/Cosmos.
+→ `GraphProvider.build_production_graph()` — that writes unlabeled Gold
+nodes. Retrieval blindness is enforced by label exclusion in every query the
+Production Graph page and the GraphRAG retrieval layer run, not by the
+Candidate Graph being unable to reach Neo4j at all.
 
 **Graph Change Analysis.** `review.graph_diff.compute_graph_diff()` compares
 the current Gold baseline (`storage.read_graph_export()`) against the
@@ -490,14 +564,18 @@ Graph" / `chat` CLI)
 ```
 
 - **GraphRAG service layer** (`src/retrieval/graphrag_service.py`) —
-  `retrieve_context()` embeds the question (`EmbeddingProvider`, reusing the
-  same abstraction ingestion uses for chunks), runs a Neo4j native vector
-  search over chunk embeddings (`GraphProvider.search_chunks()`), follows
-  the existing `(Chunk)-[:MENTIONS]->(Entity)` relationship to the entities
-  those chunks reference (`get_mentioned_entities()`), expands to
-  neighboring entities (`get_neighbors()`), and assembles the result —
-  chunks, entities, human-readable graph paths, citations — into text for
-  the LLM.
+  `retrieve_context()` embeds the question (`EmbeddingProvider` — Ollama
+  `bge-m3` by default, reusing the same abstraction ingestion uses for
+  chunks), runs a Neo4j native vector search over chunk embeddings
+  (`GraphProvider.search_chunks()`), follows the existing
+  `(Chunk)-[:MENTIONS]->(Entity)` relationship to the entities those chunks
+  reference (`get_mentioned_entities()`), expands to neighboring entities
+  (`get_neighbors()`), and follows outgoing `LEADS_TO` page-links from the
+  cited documents (`get_linked_documents()`, up to `retrieval.page_link_hops`
+  hops) to surface a "Next steps in this process" list. The result —
+  chunks, entities, human-readable graph paths, citations, and next
+  steps — is assembled into text for the LLM by
+  `format_context_for_llm()`.
 - **Agent orchestration layer** (`src/agents/graphrag_agent.py`) — a
   Microsoft Agent Framework `ChatAgent` ("Knowledge Graph Assistant") with a
   single tool, `graph_context_tool`, that calls `retrieve_context()`. The
@@ -513,20 +591,22 @@ Graph" / `chat` CLI)
 **Gating invariant (extends the Silver/Gold separation above): only the
 Gold Production Graph is ever used to answer a question. The Candidate
 Graph is never queried by anything in `src/retrieval/` or `src/agents/`.**
-This falls out of the same structural guarantee Graph Governance already
-relies on — `GraphProvider.publish()` is the only code path that ever
-writes to Neo4j, fed exclusively by approved content, and the new
-`search_chunks`/`get_mentioned_entities`/`get_neighbors` read methods live
-on that same `GraphProvider`/`Neo4jGraphProvider`. There is no code path
-from `src/retrieval/graphrag_service.py` to `ApprovalProvider`'s
-candidate-side methods or `StorageProvider.read_candidate_graph()` at all.
+Both graphs can live in the same Neo4j instance — `CandidateGraphStage` also
+loads candidates under `:CandidateEntity`/`:CANDIDATE_RELATIONSHIP` labels
+(see Graph Governance above) — but `search_chunks`, `get_mentioned_entities`,
+`get_neighbors`, and `get_linked_documents` all match only the unlabeled
+Gold nodes/relationships that `GraphProvider.build_production_graph()`
+writes. There is no code path from `src/retrieval/graphrag_service.py` to
+`ApprovalProvider`'s candidate-side methods, `StorageProvider.read_candidate_graph()`,
+or the `:CandidateEntity`/`:CANDIDATE_RELATIONSHIP` labels at all.
 
 Chunk nodes need an embedding vector for the vector search to work:
-`GraphStage` now joins `silver/embeddings/embeddings.json` onto chunks by
+`GraphStage` joins `silver/embeddings/embeddings.json` onto chunks by
 `chunk_id` before building the graph, and `Neo4jLoader.load_graph()`
 idempotently creates the `chunk_embedding` vector index once real
-embeddings are present (a no-op with the local no-op embedding provider,
-same as before this feature existed).
+embeddings are present. With the default `ollama`/`azure_openai` embedding
+providers this is populated on every run; it remains a no-op only if
+`embedding.provider: local_noop` is explicitly selected.
 
 See [docs/architecture/graphrag_retrieval.md](docs/architecture/graphrag_retrieval.md)
 for the full architecture diagram, sequence diagram, and implementation
@@ -600,12 +680,16 @@ pipeline — can move to Databricks as a **config change**, not a rewrite. See
    `config.yaml` (see `config.databricks.example.yaml`), and inject
    `NEO4J_*`/etc. as Databricks App/Workflow environment variables backed by
    secret scopes instead of a local `.env` file.
-3. Implement the specific `NotImplementedError` stub class(es) for whichever
-   seam is moving (`UnityCatalogProvider`, `ConfluenceSource`,
-   `DatabricksEmbeddingProvider`, `FutureOntoBricksRepository`,
-   `CosmosGraphProvider`) — each is scaffolded with a docstring describing
-   exactly what it needs to do. No other file needs to change, since every
-   stage, page, and CLI command only depends on the provider interfaces.
+3. `UnityCatalogProvider`, `DatabricksEmbeddingProvider`, and
+   `FutureOntoBricksRepository` are already real, complete implementations
+   (not stubs) — see `migration_assessment.md`/`review_board_assessment.md`
+   for the verification that closed those out. The seams still genuinely
+   unimplemented (`NotImplementedError` stubs) are `ConfluenceSource`,
+   `SharePointSource`, and `CosmosGraphProvider`; implement whichever one
+   the target deployment actually needs — each is scaffolded with a
+   docstring describing exactly what it needs to do. No other file needs to
+   change, since every stage, page, and CLI command only depends on the
+   provider interfaces.
 4. Deploy with the Databricks CLI (`databricks apps deploy` /
    `databricks bundle deploy`) or the Workspace UI, following your
    workspace's standard deployment process.
