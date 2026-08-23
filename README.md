@@ -8,14 +8,14 @@ business review and approval gate between extraction and the graph:
 Documents -> Docling Extraction -> Markdown -> Semantic Chunking ->
 Entity Extraction -> Relationship Extraction ->
 Candidate Entities & Candidate Graph (Silver) ->
-Business Review & Approval (Streamlit) ->
+Business Review & Approval (React UI) ->
 Approved Entities & Approved Ontology ->
 Production Graph (Gold) -> Neo4j -> Neo4j Visualization
                                         |
                                         v
                         GraphRAG Retrieval Layer -> Conversational Agent
                         (Microsoft Agent Framework) -> "Ask the Knowledge
-                        Graph" (Streamlit / CLI)
+                        Graph" (React UI / CLI)
 ```
 
 Nothing reaches the **Production Graph** (the unlabeled Gold nodes/
@@ -79,6 +79,23 @@ kg-local/
 │                                         # (graph_builder output over approved-only
 │                                         # content, pre-Neo4j)
 ├── logs/                       # ingestion/publish run logs
+├── api/                        # FastAPI backend for the React review app
+│   ├── main.py                    # app factory, CORS, router registration, static-file mount
+│   ├── deps.py                     # provider singletons + get_current_reviewer()
+│   ├── schemas.py                    # Pydantic request/response models
+│   ├── review_helpers.py              # now_iso/add_history/entity_display_name/etc.
+│   └── routers/                        # one router per domain (dashboard, entities,
+│                                          # relationships, ambiguity, candidate_graph,
+│                                          # production_graph, graph_diff, ontology,
+│                                          # publish, chat, health)
+├── web/                        # React + TypeScript frontend (Vite)
+│   ├── vite.config.ts             # dev-server proxy (/api/* -> api/main.py)
+│   └── src/
+│       ├── App.tsx                  # router + 7-page nav
+│       ├── api/client.ts             # typed fetch wrappers, one per endpoint
+│       ├── pages/                     # Dashboard, Review, CandidateGraph,
+│       │                                # ProductionGraph, OntologyPreview, Publish, Chat
+│       └── components/                 # shared UI (MetricTile, HistoryLog, etc.)
 ├── src/
 │   ├── config/                  # AppConfig dataclass + load_config()
 │   ├── contracts/                 # table-contract dataclasses (documentation/shape only)
@@ -120,21 +137,6 @@ kg-local/
 │   │   ├── graph_diff.py                     # Graph Change Analysis: Gold baseline vs proposed
 │   │   └── publisher.py                       # approved ontology -> Neo4j (legacy path-based helper; superseded by OntologyStage/GraphStage, kept for reference)
 │   └── main.py                    # thin CLI: load config -> build providers -> build PipelineRunner -> dispatch (+ `chat` subcommand)
-├── app/                        # Streamlit business review UI
-│   ├── streamlit_app.py
-│   ├── common.py               # get_repo() / get_storage() -> provider factories from config.yaml
-│   └── pages/
-│       ├── dashboard.py
-│       ├── entity_review.py
-│       ├── relationship_review.py
-│       ├── ambiguity_resolution.py
-│       ├── candidate_graph.py          # NEW - Silver: live candidate graph, pre-approval
-│       ├── graph_impact_analysis.py     # NEW - Gold baseline vs Silver-proposed, summary metrics
-│       ├── graph_difference_view.py      # NEW - same diff, full added/removed/modified detail
-│       ├── ontology_preview.py
-│       ├── publish.py
-│       ├── production_graph.py          # NEW - Gold: approved-only graph, what is/will be in Neo4j
-│       └── chat.py                       # NEW - "Ask the Knowledge Graph": conversational retrieval, Gold-only
 ├── docs/architecture/           # migration assessment + mermaid diagrams + local->Databricks mapping
 │   ├── graph_governance.md        # Silver/Gold artifact map, diff algorithm, gating invariant
 │   └── graphrag_retrieval.md      # NEW - retrieval/agent architecture, sequence diagram, implementation plan
@@ -146,6 +148,7 @@ kg-local/
 ## 1. Prerequisites
 
 - Python 3.10+
+- Node.js 18+ (for the React review app under `web/`)
 - Neo4j Desktop running locally with a database started:
   - Bolt endpoint: `neo4j://127.0.0.1:7687`
   - Username: `neo4j`
@@ -170,6 +173,14 @@ pip install -r requirements.txt
 > Note: Docling downloads its layout/OCR models on first use for PDF/DOCX/PPTX
 > parsing, which can take a few minutes the first time you process a binary
 > document. `.txt` and `.md` files are handled directly without Docling.
+
+Install the React app's frontend dependencies (one-time):
+
+```powershell
+cd web
+npm install
+cd ..
+```
 
 ## 4. Configure `.env`
 
@@ -310,55 +321,59 @@ written to `logs/ingest_<timestamp>.log`.
 
 ## 7. Review and approve entities
 
-Launch the Streamlit review app:
+Start the backend API and the React dev server (two terminals):
 
 ```powershell
-streamlit run app/streamlit_app.py
+uvicorn api.main:app --reload --port 8000
 ```
 
-This opens a non-technical business interface (no "Node", "Edge", "Cypher",
-or "Ontology Class" anywhere) with eleven pages:
+```powershell
+cd web
+npm run dev
+```
+
+Open `http://localhost:5173`. This opens a non-technical business interface
+(no "Node", "Edge", "Cypher", or "Ontology Class" anywhere) with seven pages:
 
 - **Dashboard** — documents processed, and candidate/approved/rejected counts
   for both entities and relationships.
-- **Entity Review** — Business Term, Suggested Definition, Confidence Score,
-  Business Meaning, Evidence, Related Terms, Status, with **Approve**,
-  **Reject**, **Edit Definition**, and **Merge With Existing Entity**
-  actions, plus an **Approve all filtered** bulk action (gated behind a
-  confirmation checkbox) for approving every pending entity in the current
-  filter view at once.
-- **Relationships** (relationship review) — Source Term, Relationship,
-  Target Term, Confidence, Evidence, with **Approve**/**Reject** actions.
-- **Ambiguity Resolution** — for terms with more than one possible meaning
-  (e.g. "Bank" → *Financial Institution* vs *River Bank*), pick the correct
-  interpretation for this organization.
-- **Candidate Graph** *(Silver, new)* — the graph as currently understood by
-  the extraction engine, computed live from every non-rejected candidate.
-  Not gated on approval — this is what business users explore *before*
-  anything is approved. See [Graph Governance](#graph-governance-silvergold-layers).
-- **Graph Impact Analysis** *(new)* — summary metrics comparing the current
+- **Review** — three stacked sections on one page:
+  - **Entity Review** — Business Term, Suggested Definition, Confidence
+    Score, Business Meaning, Evidence, Related Terms, Status, with
+    **Approve**, **Reject**, **Edit Definition**, and **Merge With Existing
+    Entity** actions, plus an **Approve all filtered** bulk action (gated
+    behind a confirmation checkbox) for approving every pending entity in
+    the current filter view at once.
+  - **Relationship Review** — Source Term, Relationship, Target Term,
+    Confidence, Evidence, with **Approve**/**Reject** actions.
+  - **Ambiguity Resolution** — for terms with more than one possible meaning
+    (e.g. "Bank" → *Financial Institution* vs *River Bank*), pick the
+    correct interpretation for this organization.
+- **Candidate Graph** *(Silver)* — the graph as currently understood by
+  the extraction engine, computed live from every non-rejected candidate,
+  plus **Graph Impact Analysis** (summary metrics comparing the current
   Production Graph to what it would look like if every pending entity and
-  relationship were approved (new entities, new relationships, merges,
-  removals, net deltas).
-- **Graph Difference View** *(new)* — the same comparison as full detail
-  lists: added/removed/modified/merged entities, added/removed relationships.
+  relationship were approved) and **Graph Difference View** (the same
+  comparison as full added/removed/modified/merged detail lists), as
+  additional sections on the same page. Not gated on approval — this is
+  what business users explore *before* anything is approved. See
+  [Graph Governance](#graph-governance-silvergold-layers).
 - **Ontology Preview** — read-only view of exactly what will be published:
   approved entities and relationships only.
 - **Publish** — see below.
-- **Production Graph** *(Gold, new)* — the approved-only graph that is (or
+- **Production Graph** *(Gold)* — the approved-only graph that is (or
   will be) live in Neo4j. Candidates still pending review never appear here.
-- **Ask the Knowledge Graph** *(new)* — conversational retrieval over the
+- **Ask the Knowledge Graph** — conversational retrieval over the
   published Production Graph. Answers cite source chunk, source document,
   and graph path used, and are always grounded in the Gold graph only. See
   [GraphRAG Retrieval Layer](#graphrag-retrieval-layer) below.
 
 Every approve/reject/edit/merge action records who made it and when, and the
-full history is visible on each entity and relationship. Because every page
-above computes from the current repository/storage state on each Streamlit
-rerun, approving an entity on Entity Review is immediately reflected the next
-time Candidate Graph, Graph Impact Analysis, or Graph Difference View render
-— no manual refresh or background job required (the "Refresh" button on
-Candidate Graph just forces an early rerun of the same live computation).
+full history is visible on each entity and relationship. Approving an entity
+on Entity Review is immediately reflected the next time Candidate Graph,
+Graph Impact Analysis, or Graph Difference View are fetched — no manual
+refresh or background job required (the "Refresh" button on Candidate Graph
+just re-fetches the same live computation).
 
 Re-running `python src/main.py ingest ./docs` later (e.g. after adding new
 documents) never overwrites entities you've already approved, rejected, or
@@ -388,12 +403,12 @@ python -c "import json,sys; sys.path.insert(0,'src'); import providers; from con
 config-aware factory here keeps the seeded data pointed at the same
 `lakehouse/gold/review/` location the rest of the pipeline uses.)
 
-Then run `streamlit run app/streamlit_app.py` to explore the UI immediately.
+Then start the backend/frontend as in step 7 to explore the UI immediately.
 
 ## 8. Publish the approved ontology and graph
 
 Once a batch of entities has been reviewed, publish them either from the
-**Publish** page in the Streamlit app or from the CLI:
+**Publish** page in the React app or from the CLI:
 
 ```powershell
 python src/main.py publish-ontology
@@ -472,7 +487,7 @@ terminal:
 python src/main.py chat
 ```
 
-or from the Streamlit app's **Ask the Knowledge Graph** page. Both build the
+or from the React app's **Ask the Knowledge Graph** page. Both build the
 same agent against whichever `embedding.provider`/`llm.provider` are
 configured — Ollama by default (no extra setup beyond step 4), or Azure
 OpenAI if `ai.mode: azure`/`AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_KEY`
@@ -495,7 +510,7 @@ and (about to be) live in Neo4j":
   (pure function, reuses the unmodified `graph_builder.build_graph()`),
   written to `lakehouse/silver/candidate_graph/candidate_graph.json` by
   `CandidateGraphStage` on every `ingest` run, and computed live (not read
-  from the snapshot) by the **Candidate Graph** Streamlit page. Not gated on
+  from the snapshot) by the **Candidate Graph** page. Not gated on
   approval — this is the graph as the extraction engine currently
   understands it, safe for business users to explore before anything is
   approved.
@@ -538,7 +553,7 @@ for the full artifact map and diff definition.
 2. Go to **Entity Review**, approve a handful of entities (and optionally
    merge a duplicate).
 3. Return to **Candidate Graph** — the tables reflect the approval instantly
-   (same live computation, Streamlit's rerun-on-interaction model).
+   (same live computation, re-fetched after the save).
 4. Open **Graph Impact Analysis** — see non-zero "New Entities"/"New
    Relationships" deltas for what you just approved.
 5. Open **Graph Difference View** — see the same change as explicit
@@ -582,7 +597,7 @@ Graph" / `chat` CLI)
   agent is instructed to answer only from that tool's results and to say
   plainly when it doesn't have enough approved information, rather than
   guessing.
-- **Conversational UI** — the **Ask the Knowledge Graph** Streamlit page and
+- **Conversational UI** — the **Ask the Knowledge Graph** page and
   the `python src/main.py chat` terminal REPL both build the same agent and
   render the same citations: source chunk, source document, and the graph
   path used, phrased as entity-relationship sentences (e.g. "Billing
@@ -645,7 +660,7 @@ exactly six methods: `save_candidate_entity`, `save_candidate_relationship`,
 `get_candidate_entities`, `get_candidate_relationships`,
 `get_approved_entities`, `get_approved_relationships`. `save_*` are plain
 upserts by `id`; all state-machine logic (status transitions, history) is
-owned by the caller (the Streamlit pages and `candidate_builder`), not the
+owned by the caller (the API routers and `candidate_builder`), not the
 repository. This ABC is also what the pipeline's `ApprovalProvider` concept
 refers to — no separate class, no rename, just the existing interface
 reached through one more layer of indirection (see below).
@@ -653,7 +668,7 @@ reached through one more layer of indirection (see below).
 Two equivalent entry points resolve to the same repository today:
 
 - `providers.get_approval_provider(config)` (in `src/providers/approval_provider.py`)
-  — what `app/common.py` and every pipeline stage use. Reads
+  — what `api/deps.py` and every pipeline stage use. Reads
   `config.yaml`'s `approval.provider` (`local` | `ontobricks`) and passes a
   `lakehouse/gold/review/` path down.
 - `review.repository.get_repository()` — the original factory, keyed off
@@ -678,18 +693,20 @@ other file in the pipeline, UI, or publisher needs to change.
 
 ## Deploying to Databricks
 
-The Streamlit app under `app/` has no local-filesystem assumptions beyond
-`LocalOntologyRepository`'s JSON files (reached through
+The FastAPI + React app (`api/`, `web/`) has no local-filesystem assumptions
+beyond `LocalOntologyRepository`'s JSON files (reached through
 `providers.get_approval_provider(config)`), so it — and the rest of the
 pipeline — can move to Databricks as a **config change**, not a rewrite. See
 [docs/architecture/](docs/architecture/) for the full picture
 (`migration_assessment.md`, `architecture_diagram.md`,
 `dependency_diagram.md`, `local_to_databricks_mapping.md`); in short:
 
-1. Add an `app.yaml` at the repo root (or inside `app/`) pointing at the
-   Streamlit entry point, e.g.:
+1. Run `npm run build` in `web/` (outputs `web/dist/`, which `api/main.py`
+   mounts as static files so one process serves both the API and the UI —
+   the shape Databricks Apps expects), then add an `app.yaml` at the repo
+   root pointing at the FastAPI entry point, e.g.:
    ```yaml
-   command: ["streamlit", "run", "app/streamlit_app.py"]
+   command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
    ```
 2. Set `execution_mode: databricks` plus the relevant `provider:` values in
    `config.yaml` (see `config.databricks.example.yaml`), and inject

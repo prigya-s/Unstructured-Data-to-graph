@@ -19,8 +19,15 @@ class OllamaLLMProvider(LLMProvider):
         options = config.llm.options.get("ollama", {})
         self.base_url = options.get("base_url", "http://localhost:11434")
         self.model = options.get("model", "qwen3:14b")
+        self.num_thread = options.get("num_thread")
 
     def get_chat_client(self):
         from agent_framework.ollama import OllamaChatClient
 
         return OllamaChatClient(host=self.base_url, model=self.model)
+
+    def get_chat_options(self) -> dict:
+        # CPU-only inference: pin the generation call to all physical cores
+        # (see config.yaml llm.ollama.num_thread) rather than relying on
+        # Ollama's own thread-count heuristic.
+        return {"num_thread": self.num_thread} if self.num_thread else {}

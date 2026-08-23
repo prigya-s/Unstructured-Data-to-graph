@@ -135,6 +135,7 @@ llm:
   ollama:                     # only read when provider: ollama (or ai.mode: local)
     base_url: http://localhost:11434
     model: llama3.1:8b
+    num_thread: 12  # pin generation to all physical cores on this CPU-only dev machine (12 physical / 14 logical) - Ollama's own default heuristic under-uses them
 
 ai:
   # Sugar only: mode fills in the embedding/extraction/llm provider values
@@ -151,7 +152,10 @@ ai:
 retrieval:
   # Tunables for the GraphRAG retrieval pipeline (src/retrieval/graphrag_service.py).
   # No provider switch - Neo4j-only today.
-  top_k_chunks: 8
+  top_k_chunks: 5  # lowered from 8 to shrink the context fed to the local LLM (latency); raise back toward 8 if answers start missing relevant chunks
   graph_expansion_hops: 1
   max_neighbors: 20
-  page_link_hops: 2  # how many LEADS_TO hops ahead to surface as "next steps" in a chat answer
+  page_link_hops: 1  # lowered from 2 - fewer next_steps hops means less context text and a smaller neighbor-expansion query per chat turn
+  query_cache_enabled: true  # skip retrieval + LLM generation entirely for a repeated/near-duplicate question - useful across demo rehearsals
+  query_cache_similarity_threshold: 0.96  # cosine similarity (embedding space) above which a rephrased question is treated as a cache hit
+  query_cache_max_entries: 200  # bounded FIFO - oldest cached query is evicted once this many are held

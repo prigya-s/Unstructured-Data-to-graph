@@ -116,6 +116,9 @@ class RetrievalConfig:
     page_link_hops: int = 2
     agent_timeout_seconds: int = 240
     max_query_length: int = 4000
+    query_cache_enabled: bool = True
+    query_cache_similarity_threshold: float = 0.96
+    query_cache_max_entries: int = 200
 
 
 @dataclass

@@ -253,7 +253,7 @@ def run_ingest(docs_dir: str, run_id: str) -> None:
             f"{ctx.candidate_graph['stats']['entity_relationships']} relationships"
         )
     print(f"\nCandidates are ready for business review at: {review_dir}")
-    print(f"  streamlit run app/streamlit_app.py")
+    print(f"  uvicorn api.main:app --port 8001  (then open the React UI, npm run dev in web/)")
     print(f"\nAfter entities are approved:")
     print(f"  python src/main.py publish-ontology")
     print(f"  python src/main.py publish-graph")
@@ -272,7 +272,7 @@ def run_publish_ontology(run_id: str) -> None:
     try:
         ctx = build_runner().run_stage("ontology", ctx)
     except ValueError as exc:
-        print(f"{exc} Open the Streamlit app to review candidates: streamlit run app/streamlit_app.py")
+        print(f"{exc} Review candidates in the React app: uvicorn api.main:app --port 8001")
         return
 
     ontology = ctx.ontology_result
@@ -318,7 +318,7 @@ def run_publish_graph(run_id: str) -> None:
     try:
         ctx = build_runner().run_stage("graph", ctx)
     except ValueError as exc:
-        print(f"{exc} Open the Streamlit app to review candidates: streamlit run app/streamlit_app.py")
+        print(f"{exc} Review candidates in the React app: uvicorn api.main:app --port 8001")
         return
 
     stats = ctx.publish_stats
@@ -365,18 +365,20 @@ def run_chat(run_id: str) -> None:
                 break
 
             try:
-                response = await agent.run(query, thread=thread)
+                print("\nAssistant: ", end="", flush=True)
+                async for chunk in agent.run_stream(query, thread=thread):
+                    print(chunk, end="", flush=True)
+                print("\n")
             except asyncio.TimeoutError:
-                print("\nAssistant: That took too long to answer - please try again.\n")
+                print("\nThat took too long to answer - please try again.\n")
                 continue
             except ValueError as exc:
-                print(f"\nAssistant: {exc}\n")
+                print(f"\n{exc}\n")
                 continue
             except Exception:  # noqa: BLE001 - keep the REPL alive on provider/LLM errors
                 logger.exception("Chat turn failed")
-                print("\nAssistant: Something went wrong answering that - check the log file.\n")
+                print("\nSomething went wrong answering that - check the log file.\n")
                 continue
-            print(f"\nAssistant: {response}\n")
 
             result = agent.last_result
             if result.citations:

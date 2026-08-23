@@ -32,7 +32,7 @@ class RetrievalResult:
         return not self.chunks
 
 
-def _embed_query(embedding_provider, query: str) -> list[float]:
+def embed_query(embedding_provider, query: str) -> list[float]:
     records = embedding_provider.embed_chunks(
         [{"chunk_id": "__query__", "document": "__query__", "content": query}]
     )
@@ -58,7 +58,7 @@ def retrieve_context(
     graph_provider,
     config: AppConfig,
 ) -> RetrievalResult:
-    query_vector = _embed_query(embedding_provider, query)
+    query_vector = embed_query(embedding_provider, query)
 
     chunks = graph_provider.search_chunks(query_vector, config.retrieval.top_k_chunks)
     if not chunks:
@@ -96,9 +96,9 @@ def retrieve_context(
 
 
 def format_context_for_llm(result: RetrievalResult) -> str:
-    """Renders a RetrievalResult as plain text for the agent's tool
-    response. Business-friendly language only - never "node"/"edge"/
-    "cypher"/"ontology class" (see app/common.py).
+    """Renders a RetrievalResult as plain text to prepend to the user's
+    question before it reaches the LLM. Business-friendly language only -
+    never "node"/"edge"/"cypher"/"ontology class" (see app/common.py).
 
     Chunk content originates from ingested documents, not from the operator
     or the LLM, so it is wrapped in explicit untrusted-data delimiters -

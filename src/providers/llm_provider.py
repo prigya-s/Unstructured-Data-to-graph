@@ -17,3 +17,9 @@ class LLMProvider(ABC):
     def get_chat_client(self) -> Any:
         """Returns a Microsoft Agent Framework ChatClientProtocol
         implementation, e.g. agent_framework.azure.AzureOpenAIChatClient."""
+
+    def get_chat_options(self) -> dict[str, Any]:
+        """Provider-specific per-request options to pass to get_response()
+        (e.g. Ollama's num_thread). Empty by default - most providers need
+        none."""
+        return {}
