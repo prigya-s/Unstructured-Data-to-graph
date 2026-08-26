@@ -94,6 +94,7 @@ class MockGraphProvider(GraphProvider):
                 "chunk_id": chunk["id"],
                 "content": chunk.get("content"),
                 "document_id": chunk.get("document"),
+                "document_name": self.documents.get(chunk.get("document"), {}).get("name"),
                 "score": 1.0,
             }
             for chunk in self.chunks.values()

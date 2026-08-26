@@ -235,11 +235,11 @@ function SourcesExpander({ sources }: { sources: ChatStreamDone }) {
             <>
               <h4>Source documents</h4>
               <ul>
-                {sources.citations.map((citation, index) => (
-                  <li key={index}>
-                    chunk {citation.chunk_id} (document {citation.document_id})
-                  </li>
-                ))}
+                {[...new Set(sources.citations.map((citation) => citation.document_name))].map(
+                  (name) => (
+                    <li key={name}>{name}</li>
+                  ),
+                )}
               </ul>
             </>
           )}

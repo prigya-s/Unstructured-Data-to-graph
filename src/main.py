@@ -383,8 +383,8 @@ def run_chat(run_id: str) -> None:
             result = agent.last_result
             if result.citations:
                 print("Sources:")
-                for citation in result.citations:
-                    print(f"  - chunk {citation['chunk_id']} (document {citation['document_id']})")
+                for name in dict.fromkeys(citation["document_name"] for citation in result.citations):
+                    print(f"  - {name}")
                 for path in result.graph_paths:
                     print(f"  - graph path: {path}")
                 print()

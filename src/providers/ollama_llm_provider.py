@@ -20,6 +20,8 @@ class OllamaLLMProvider(LLMProvider):
         self.base_url = options.get("base_url", "http://localhost:11434")
         self.model = options.get("model", "qwen3:14b")
         self.num_thread = options.get("num_thread")
+        self.temperature = options.get("temperature")
+        self.seed = options.get("seed")
 
     def get_chat_client(self):
         from agent_framework.ollama import OllamaChatClient
@@ -29,5 +31,14 @@ class OllamaLLMProvider(LLMProvider):
     def get_chat_options(self) -> dict:
         # CPU-only inference: pin the generation call to all physical cores
         # (see config.yaml llm.ollama.num_thread) rather than relying on
-        # Ollama's own thread-count heuristic.
-        return {"num_thread": self.num_thread} if self.num_thread else {}
+        # Ollama's own thread-count heuristic. temperature/seed (also
+        # config.yaml llm.ollama) make identical (prompt, context) pairs
+        # reproduce the same answer instead of resampling every call.
+        options = {}
+        if self.num_thread:
+            options["num_thread"] = self.num_thread
+        if self.temperature is not None:
+            options["temperature"] = self.temperature
+        if self.seed is not None:
+            options["seed"] = self.seed
+        return options

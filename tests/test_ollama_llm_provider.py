@@ -41,3 +41,29 @@ def test_get_chat_client_returns_configured_ollama_chat_client():
     client = provider.get_chat_client()
 
     assert isinstance(client, OllamaChatClient)
+
+
+def test_get_chat_options_is_empty_when_no_options_given():
+    provider = OllamaLLMProvider(AppConfig(llm=LLMConfig(provider="ollama")))
+    assert provider.get_chat_options() == {}
+
+
+def test_get_chat_options_passes_through_num_thread_temperature_seed():
+    config = AppConfig(
+        llm=LLMConfig(
+            provider="ollama",
+            options={"ollama": {"num_thread": 12, "temperature": 0.1, "seed": 42}},
+        )
+    )
+    provider = OllamaLLMProvider(config)
+
+    assert provider.get_chat_options() == {"num_thread": 12, "temperature": 0.1, "seed": 42}
+
+
+def test_get_chat_options_allows_temperature_zero():
+    config = AppConfig(
+        llm=LLMConfig(provider="ollama", options={"ollama": {"temperature": 0}}),
+    )
+    provider = OllamaLLMProvider(config)
+
+    assert provider.get_chat_options() == {"temperature": 0}

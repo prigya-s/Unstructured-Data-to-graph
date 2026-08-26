@@ -34,7 +34,7 @@ export interface NewThreadResponse {
 }
 
 export interface ChatStreamDone {
-  citations: { chunk_id: string; document_id: string }[];
+  citations: { chunk_id: string; document_id: string; document_name: string }[];
   entities: { entity_id: string; name: string; entity_type: string }[];
   graph_paths: string[];
   next_steps: string[];

@@ -362,8 +362,9 @@ class Neo4jLoader:
             """
             CALL db.index.vector.queryNodes('chunk_embedding', $top_k, $query_vector)
             YIELD node, score
+            MATCH (d:Document {id: node.document})
             RETURN node.id AS chunk_id, node.content AS content,
-                   node.document AS document_id, score
+                   node.document AS document_id, d.name AS document_name, score
             ORDER BY score DESC
             """,
             top_k=top_k,

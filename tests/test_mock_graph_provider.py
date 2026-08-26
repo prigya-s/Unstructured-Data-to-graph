@@ -41,7 +41,9 @@ def test_save_chunk_and_search_chunks():
     provider.save_chunk([{"id": "c1", "content": "hello", "document": "d1"}])
     result = provider.search_chunks([0.1, 0.2], top_k=5)
 
-    assert result == [{"chunk_id": "c1", "content": "hello", "document_id": "d1", "score": 1.0}]
+    assert result == [
+        {"chunk_id": "c1", "content": "hello", "document_id": "d1", "document_name": None, "score": 1.0}
+    ]
 
 
 def test_search_chunks_respects_top_k():

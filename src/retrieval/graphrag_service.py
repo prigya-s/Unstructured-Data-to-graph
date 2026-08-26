@@ -77,7 +77,12 @@ def retrieve_context(
         graph_paths = [_format_path(path) for path in neighbors["paths"]]
 
     citations = [
-        {"chunk_id": chunk["chunk_id"], "document_id": chunk["document_id"]} for chunk in chunks
+        {
+            "chunk_id": chunk["chunk_id"],
+            "document_id": chunk["document_id"],
+            "document_name": chunk["document_name"],
+        }
+        for chunk in chunks
     ]
 
     document_ids = list({chunk["document_id"] for chunk in chunks})
@@ -112,7 +117,7 @@ def format_context_for_llm(result: RetrievalResult) -> str:
     lines = ["Relevant excerpts from approved documents:"]
     for chunk in result.chunks:
         lines.append(
-            f"- (chunk {chunk['chunk_id']} from document {chunk['document_id']}): "
+            f"- From \"{chunk['document_name']}\": "
             f"<<<BEGIN_UNTRUSTED_DOCUMENT_EXCERPT>>>{chunk['content']}<<<END_UNTRUSTED_DOCUMENT_EXCERPT>>>"
         )
 

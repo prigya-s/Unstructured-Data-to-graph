@@ -85,7 +85,8 @@ class GraphProvider(ABC):
     @abstractmethod
     def search_chunks(self, query_vector: list[float], top_k: int) -> list[dict]:
         """Vector-similarity search over Chunk embeddings. Returns dicts with
-        chunk_id, content, document_id, score, ordered by descending score."""
+        chunk_id, content, document_id, document_name, score, ordered by
+        descending score."""
 
     @abstractmethod
     def get_mentioned_entities(self, chunk_ids: list[str]) -> list[dict]:
