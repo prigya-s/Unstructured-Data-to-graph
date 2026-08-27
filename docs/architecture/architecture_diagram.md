@@ -40,7 +40,7 @@ flowchart TB
 
     subgraph Review["Business Review & Approval"]
         APP["ApprovalStage\n-> candidate_builder (unchanged)"]
-        UI["● Streamlit\n(local_approval_ui, bulk-approve)\n○ OntoBricks (FutureOntoBricksRepository - stub)"]
+        UI["● React + FastAPI\n(web/ + api/, bulk-approve)\n○ OntoBricks (FutureOntoBricksRepository - stub)"]
     end
 
     subgraph CandGraph["Silver: Candidate Graph"]
@@ -61,9 +61,9 @@ flowchart TB
 
     subgraph Retrieval["GraphRAG Retrieval / Agent Layer"]
         SVC["retrieval/graphrag_service.py\nembed query -> search_chunks ->\nget_mentioned_entities -> get_neighbors ->\nget_linked_documents (next steps)"]
-        AGT["agents/graphrag_agent.py\nMicrosoft Agent Framework ChatAgent\n+ graph_context_tool"]
-        LLM["● ollama (llama3.1:8b, default local)\n● azure_openai (real, alt)\n(LLMProvider)"]
-        CONV["Ask the Knowledge Graph\n(Streamlit page / `chat` CLI)"]
+        AGT["agents/graphrag_agent.py\nGraphRAGAgent: calls retrieve_context()\ndirectly, no tool-call turn; streamed\nrun_stream(), QueryCache short-circuit"]
+        LLM["● ollama (llama3.2:3b, default local)\n● azure_openai (real, alt)\n(LLMProvider)"]
+        CONV["Ask the Knowledge Graph\n(React page / `chat` CLI, both streamed)"]
     end
 
     LF --> ING

@@ -121,9 +121,10 @@ kg-local/
 │   ├── graph/graph_builder.py                 # +optional embedding passthrough on Chunk nodes, +page-link (LEADS_TO) extraction
 │   ├── graph/neo4j_loader.py                   # +vector index + search_chunks/get_mentioned_entities/get_neighbors/get_linked_documents, +CHILD_OF_PAGE/LEADS_TO structural edges
 │   ├── retrieval/                              # NEW - GraphRAG service layer
-│   │   └── graphrag_service.py                   # retrieve_context() -> RetrievalResult, format_context_for_llm()
+│   │   ├── graphrag_service.py                   # retrieve_context() -> RetrievalResult, format_context_for_llm()
+│   │   └── query_cache.py                         # QueryCache - similarity-match cache of past (query, answer, RetrievalResult)
 │   ├── agents/                                 # NEW - Agent orchestration layer (Microsoft Agent Framework)
-│   │   └── graphrag_agent.py                     # build_agent() -> ChatAgent + graph_context_tool
+│   │   └── graphrag_agent.py                     # GraphRAGAgent -> ChatAgent + graph_context_tool, run()/run_stream()
 │   ├── review/                    # business review/approval workflow (see below) - UNCHANGED business logic
 │   │   ├── models.py                # CandidateEntity, CandidateRelationship, WorkflowStatus
 │   │   ├── repository.py             # OntologyRepository abstraction + get_repository()
@@ -205,7 +206,7 @@ Ollama, then pull the three models the default config points at:
 ```powershell
 ollama pull bge-m3        # embedding.ollama.model
 ollama pull qwen3:14b      # extraction.ollama.model (hybrid extraction's LLM fallback)
-ollama pull llama3.1:8b    # llm.ollama.model (chat/GraphRAG agent)
+ollama pull llama3.2:3b    # llm.ollama.model (chat/GraphRAG agent)
 ```
 
 Ollama's own `base_url`/`model` come from `config.yaml` (`embedding.ollama`,
@@ -214,6 +215,11 @@ variables are needed. With Ollama running, ingestion produces real
 embedding vectors and hybrid (rule-based + LLM-fallback) entity extraction
 out of the box, and `python src/main.py chat` / the **Ask the Knowledge
 Graph** page work without any Azure setup.
+
+`llm.ollama` also sets `num_thread` (CPU threads Ollama uses for chat
+generation), plus `temperature` and `seed` - pinned by default (`0.1` and
+`42`) so the same question against the same graph state returns the same
+answer every time, rather than a different phrasing on each run.
 
 **Azure OpenAI is a real, swap-in alternative**, not a fallback path.
 Set `ai.mode: azure` in `config.yaml` (or override `embedding.provider`/
@@ -364,8 +370,10 @@ Open `http://localhost:5173`. This opens a non-technical business interface
 - **Production Graph** *(Gold)* — the approved-only graph that is (or
   will be) live in Neo4j. Candidates still pending review never appear here.
 - **Ask the Knowledge Graph** — conversational retrieval over the
-  published Production Graph. Answers cite source chunk, source document,
-  and graph path used, and are always grounded in the Gold graph only. See
+  published Production Graph. The answer streams in as plain, non-technical
+  prose (no chunk IDs, node/edge language, or Cypher) and closes with a
+  **References** line naming only the source document titles; it is always
+  grounded in the Gold graph only. See
   [GraphRAG Retrieval Layer](#graphrag-retrieval-layer) below.
 
 Every approve/reject/edit/merge action records who made it and when, and the
@@ -599,9 +607,19 @@ Graph" / `chat` CLI)
   guessing.
 - **Conversational UI** — the **Ask the Knowledge Graph** page and
   the `python src/main.py chat` terminal REPL both build the same agent and
-  render the same citations: source chunk, source document, and the graph
-  path used, phrased as entity-relationship sentences (e.g. "Billing
-  Service USES Payment Gateway") — never "Node", "Edge", or "Cypher".
+  stream the answer incrementally as the LLM generates it (NDJSON `delta`
+  lines over the API; token-by-token in the terminal) rather than waiting
+  for the full response. The narrative itself never names chunk/document
+  IDs, nodes, edges, or Cypher — graph paths are phrased as
+  entity-relationship sentences inline (e.g. "Billing Service USES Payment
+  Gateway"), and the answer closes with a **References** line listing only
+  the titles of the source documents used.
+- **Query cache** (`src/retrieval/query_cache.py`) — a similarity-based
+  cache of past `(query, answer, RetrievalResult)` triples. A new question
+  that's a close enough match (cosine similarity above
+  `retrieval.query_cache_similarity_threshold`) to a previously-answered one
+  returns the cached answer as a single chunk instead of re-running
+  retrieval and generation, keeping repeated/rephrased questions fast.
 
 **Gating invariant (extends the Silver/Gold separation above): only the
 Gold Production Graph is ever used to answer a question. The Candidate

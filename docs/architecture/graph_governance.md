@@ -64,7 +64,8 @@ way: by **label**, not by absence of a connection.
   `ontology_generator.load_approved_for_graph()` (approved-only).
 - Every retrieval-facing query - `GraphProvider.search_chunks()`,
   `get_mentioned_entities()`, `get_neighbors()`, `get_linked_documents()`,
-  and the Cypher the **Production Graph** Streamlit page runs - matches
+  and the Cypher the **Production Graph** page (`web/src/pages/ProductionGraph.tsx`,
+  via `api/routers/production_graph.py`) runs - matches
   only the unlabeled Gold nodes/relationships. None of them match
   `:CandidateEntity`/`:CANDIDATE_RELATIONSHIP`.
 
@@ -79,14 +80,15 @@ for the `CandidateGraphStage`/`GraphStage` call graph.
 
 ## Live-ness ("approving an entity must automatically update...")
 
-The Streamlit **Candidate Graph**, **Graph Impact Analysis**, and **Graph
-Difference View** pages do not read a persisted snapshot on load - each
-calls `build_candidate_graph(repo)` / `compute_graph_diff(repo, storage)`
-directly, exactly like the existing **Ontology Preview** page already
-recomputes from the repository on every page load. Streamlit reruns
-top-to-bottom on every interaction, so an approval on **Entity Review**
-is reflected the next time any of these pages render, with no event bus or
-cache-invalidation logic required. The persisted
+The **Candidate Graph** page (which folds in the Graph Impact Analysis and
+Graph Difference View sections) does not read a persisted snapshot on load -
+its backing endpoint calls `build_candidate_graph(repo)` /
+`compute_graph_diff(repo, storage)` directly on every request, exactly like
+the existing **Ontology Preview** page already recomputes from the
+repository on every fetch. The React page re-fetches via a plain `useEffect`
+on mount and on its "Refresh" button, so an approval on **Entity Review**
+is reflected the next time the page loads or is refreshed, with no event bus
+or cache-invalidation logic required. The persisted
 `lakehouse/silver/candidate_graph/candidate_graph.json` snapshot (written by
 `CandidateGraphStage` on every `ingest`) exists for auditability and a future
 Delta/Unity Catalog migration, not as the UI's source of truth.
@@ -113,15 +115,15 @@ Delta/Unity Catalog migration, not as the UI's source of truth.
   `(source, relationship, target)` after merge resolution, with
   self-relationships and dangling endpoints dropped.
 
-One `GraphDiff` instance backs both the **Graph Impact Analysis** page
-(summary `st.metric` counts and net deltas) and the **Graph Difference
-View** page (the same object's full added/removed/modified/merged lists) -
-no duplicated diff logic between the two screens.
+One `GraphDiff` instance backs both the **Graph Impact Analysis** section
+(summary metric tiles and net deltas) and the **Graph Difference View**
+section (the same object's full added/removed/modified/merged lists) on the
+Candidate Graph page - no duplicated diff logic between the two.
 
 ## UI language
 
-Consistent with the existing `app/common.py` convention, none of the new
-screens use the words "Node", "Edge", "Cypher", or "Ontology Class" - graphs
-are rendered as entity/relationship tables and metrics (`st.dataframe`/
-`st.metric`), matching the pre-existing **Ontology Preview** page's style.
-No graph-visualization dependency was added.
+None of the review/graph screens use the words "Node", "Edge", "Cypher", or
+"Ontology Class" - graphs are rendered as entity/relationship tables and
+metric tiles (React components under `web/src/components/`), matching the
+pre-existing **Ontology Preview** page's style. No graph-visualization
+dependency was added.
