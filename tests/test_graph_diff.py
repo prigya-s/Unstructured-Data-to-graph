@@ -35,6 +35,12 @@ class FakeOntologyRepository(OntologyRepository):
     def get_approved_relationships(self):
         return [r for r in self._relationships if r.status == WorkflowStatus.APPROVED]
 
+    def save_class_proposal(self, proposal) -> None:
+        raise AssertionError("compute_graph_diff() must not write")
+
+    def get_class_proposals(self):
+        return []
+
 
 class FakeStorage:
     def __init__(self, graph_export=None) -> None:

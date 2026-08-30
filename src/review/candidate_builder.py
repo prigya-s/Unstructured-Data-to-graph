@@ -16,20 +16,34 @@ rows are refreshed with the latest extraction output.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from .ambiguity_terms import possible_meanings_for
 from .models import (
     CandidateEntity,
     CandidateRelationship,
+    ClassProposal,
     HistoryEntry,
     WorkflowStatus,
+    make_proposal_id,
     make_relationship_id,
 )
 from .repository import OntologyRepository
 
+if TYPE_CHECKING:
+    from config.app_config import AppConfig
+
+logger = logging.getLogger("kg_local.candidate_builder")
+
 _SNIPPET_LENGTH = 200
 _MAX_SNIPPETS = 3
+
+# Tunable: an entity mentioned fewer times than this across the whole corpus
+# never becomes a PENDING_REVIEW row at all - a single stray capitalized
+# phrase is noise, not a candidate worth a reviewer's attention.
+_MIN_MENTIONS_FOR_REVIEW = 2
 
 DEFINITION_TEMPLATES: dict[str, str] = {
     "Document": "{name} is a source document referenced by the reviewed content.",
@@ -45,7 +59,6 @@ DEFINITION_TEMPLATES: dict[str, str] = {
     "Check": "{name} is a verification or authentication check performed as part of a process.",
     "Party": "{name} is a person or role involved in a business transaction or request.",
     "Channel": "{name} is a channel through which customers or staff interact with the business.",
-    "Topic": "{name} is a topic covered by a page or section of the reviewed documents.",
 }
 
 BUSINESS_MEANING_TEMPLATES: dict[str, str] = {
@@ -62,7 +75,6 @@ BUSINESS_MEANING_TEMPLATES: dict[str, str] = {
     "Check": "Confirms that a customer or request meets the conditions needed to proceed.",
     "Party": "Identifies who is involved in, or affected by, a business transaction or request.",
     "Channel": "Determines how a customer or staff member can carry out an interaction.",
-    "Topic": "Groups related content so business users can find guidance on a specific subject.",
 }
 
 _DEFAULT_DEFINITION = "{name} is a concept identified in the reviewed documents."
@@ -122,22 +134,37 @@ def build_candidates(
     relationships: list[dict],
     chunks: list[dict],
     repository: OntologyRepository,
+    config: "AppConfig | None" = None,
 ) -> tuple[int, int]:
     """entities/mentions/relationships: raw output from entity_extractor and
     relationship_extractor. chunks: all chunks from semantic_chunker (used to
     resolve evidence snippets and source documents). repository: destination
-    for the resulting CandidateEntity/CandidateRelationship rows.
+    for the resulting CandidateEntity/CandidateRelationship rows. config: when
+    given and ontology.turtle_modules is configured, each relationship
+    candidate is checked against the RDF layer's declared rdfs:domain/
+    rdfs:range (see ontology.rdf.guardrails.check_relationship_type_mismatch)
+    and any mismatch is recorded as a "warning" history entry - advisory
+    only, never blocking. Fully inert (no graph loaded, no behavior change)
+    when config is None or no turtle_modules are configured.
 
     Returns (entities_saved, relationships_saved) - the number of rows
     actually written (decided rows that were preserved are not counted).
     """
     chunks_by_id = {c["chunk_id"]: c for c in chunks}
     mentions_by_entity = _group_mentions_by_entity(mentions)
+    entity_type_by_id = {raw["id"]: raw["type"] for raw in entities}
+
+    ontology_graph = None
+    if config is not None:
+        from ontology.rdf.graph_loader import load_ontology_graph
+
+        ontology_graph = load_ontology_graph(config)
 
     existing_entities = {e.id: e.status for e in repository.get_candidate_entities()}
     entity_confidence: dict[str, float] = {}
 
     entities_to_save: list[CandidateEntity] = []
+    entities_skipped_low_mentions = 0
     for raw in entities:
         entity_id = raw["id"]
         entity_mentions = mentions_by_entity.get(entity_id, [])
@@ -147,6 +174,10 @@ def build_candidates(
 
         current_status = existing_entities.get(entity_id)
         if current_status in (WorkflowStatus.APPROVED, WorkflowStatus.REJECTED, WorkflowStatus.MERGED):
+            continue
+
+        if mention_count < _MIN_MENTIONS_FOR_REVIEW:
+            entities_skipped_low_mentions += 1
             continue
 
         entity_type = raw["type"]
@@ -178,6 +209,12 @@ def build_candidates(
 
     repository.save_candidate_entities(entities_to_save)
     entities_saved = len(entities_to_save)
+    if entities_skipped_low_mentions:
+        logger.info(
+            "Skipped %d entity candidate(s) with fewer than %d mention(s)",
+            entities_skipped_low_mentions,
+            _MIN_MENTIONS_FOR_REVIEW,
+        )
 
     existing_relationships = {r.id: r.status for r in repository.get_candidate_relationships()}
 
@@ -211,6 +248,23 @@ def build_candidates(
             if len(evidence) >= _MAX_SNIPPETS:
                 break
 
+        history = [
+            _make_history_entry(
+                "created", f"Auto-created from {len(raw['evidence_chunks'])} occurrence(s)."
+            )
+        ]
+        if ontology_graph is not None:
+            from ontology.rdf.guardrails import check_relationship_type_mismatch
+
+            mismatch = check_relationship_type_mismatch(
+                ontology_graph,
+                entity_type_by_id.get(source, ""),
+                rel_type,
+                entity_type_by_id.get(target, ""),
+            )
+            if mismatch is not None:
+                history.append(_make_history_entry("warning", mismatch))
+
         candidate = CandidateRelationship(
             id=rel_id,
             source_entity=source,
@@ -219,11 +273,7 @@ def build_candidates(
             confidence_score=confidence,
             status=WorkflowStatus.PENDING_REVIEW,
             evidence=evidence,
-            history=[
-                _make_history_entry(
-                    "created", f"Auto-created from {len(raw['evidence_chunks'])} occurrence(s)."
-                )
-            ],
+            history=history,
         )
         relationships_to_save.append(candidate)
 
@@ -231,3 +281,39 @@ def build_candidates(
     relationships_saved = len(relationships_to_save)
 
     return entities_saved, relationships_saved
+
+
+def build_class_proposals(raw_proposals: list[dict], repository: OntologyRepository) -> int:
+    """raw_proposals: from ExtractionProvider.get_class_proposals() - one row
+    per NO_FIT-flagged entity name the LLM judged doesn't fit any existing
+    ontology class. Same idempotency rule as build_candidates(): a proposal
+    that already has a terminal status (APPROVED/REJECTED/MERGED) is left
+    untouched by a repeat ingest run.
+
+    Returns the number of rows actually written."""
+    if not raw_proposals:
+        return 0
+
+    existing = {p.id: p.status for p in repository.get_class_proposals()}
+
+    proposals_to_save: list[ClassProposal] = []
+    for raw in raw_proposals:
+        proposal_id = make_proposal_id(raw["proposed_name"])
+        current_status = existing.get(proposal_id)
+        if current_status in (WorkflowStatus.APPROVED, WorkflowStatus.REJECTED, WorkflowStatus.MERGED):
+            continue
+
+        proposal = ClassProposal(
+            id=proposal_id,
+            proposed_name=raw["proposed_name"],
+            suggested_parent=raw.get("suggested_parent"),
+            evidence=raw.get("evidence", ""),
+            source_chunks=list(raw.get("source_chunks") or []),
+            confidence=float(raw.get("confidence", 0.5)),
+            status=WorkflowStatus.NEW,
+            history=[_make_history_entry("created", "Auto-created from a NO_FIT extraction flag.")],
+        )
+        proposals_to_save.append(proposal)
+
+    repository.save_class_proposals(proposals_to_save)
+    return len(proposals_to_save)

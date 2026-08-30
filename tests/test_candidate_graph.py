@@ -36,6 +36,12 @@ class FakeOntologyRepository(OntologyRepository):
     def get_approved_relationships(self):
         return [r for r in self._relationships if r.status == WorkflowStatus.APPROVED]
 
+    def save_class_proposal(self, proposal) -> None:
+        raise AssertionError("build_candidate_graph() must not write")
+
+    def get_class_proposals(self):
+        return []
+
 
 def _entity(id_, status, name=None, source_chunks=None, merged_into=None) -> CandidateEntity:
     return CandidateEntity(

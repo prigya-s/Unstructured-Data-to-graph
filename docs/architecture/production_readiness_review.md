@@ -1,5 +1,16 @@
 # Production Readiness Review
 
+> **Historical audit.** This review reflects the codebase at the time it was
+> written: retrieval went through an `agent_framework.ChatAgent` deciding
+> whether to call a `graph_context_tool`, and the UI was the Streamlit app
+> under `app/`. Both have since changed — retrieval is now unconditional
+> (the current `GraphRAGAgent` retrieves context in plain Python and calls
+> the chat client directly, no tool-call decision turn), and the UI is the
+> FastAPI (`api/`) + React (`web/`) stack described in the current
+> [README](../../README.md). Findings below are kept as originally written;
+> §2.1 and §6.1 carry an inline note where the finding no longer applies to
+> the current design.
+
 ## Review panel & methodology
 
 Seven personas reviewed the codebase against 11 dimensions (Azure Well-Architected
@@ -49,7 +60,7 @@ Findings below are graded **Severity: Critical / High / Medium / Low**. Each car
 |---|---|
 | Bronze/Silver/Gold mapping | Present and consistent: `local/bronze` → ingestion, `silver/candidate_graph` → Silver, `gold/ontology` + `gold/graph_export` → Gold. `StorageProvider` is the only place path layout is decided (`local_storage_provider.py`); a Unity Catalog/Delta-backed `StorageProvider` (already stubbed) slots in without touching pipeline stages. |
 | Delta/Unity Catalog readiness | `src/providers/_delta_sql.py` (235 lines) already implements the Delta-SQL-connector-backed row store used by `DatabricksVolumesProvider`/`UnityCatalogProvider`/the `ontobricks` approval provider stub — the same row shape (`CandidateEntity.to_dict()`/`from_dict()`) as the local JSON repository, confirming "migration = config change, not code rewrite" for the approval workflow. |
-| Databricks Workflow/App readiness | `main.py`'s CLI commands (`ingest`, `candidate-graph`, `publish-ontology`, `publish-graph`) map 1:1 onto Databricks Workflow task steps; the Streamlit app is unmodified when run as a Databricks App (`app/common.py`'s provider factories are the only Databricks-aware surface). |
+| Databricks Workflow/App readiness | `main.py`'s CLI commands (`ingest`, `candidate-graph`, `publish-ontology`, `publish-graph`) map 1:1 onto Databricks Workflow task steps; at the time of this review the UI (then Streamlit, `app/common.py`'s provider factories) was the only other Databricks-aware surface — that UI is now the FastAPI (`api/`) + React (`web/`) stack, whose provider wiring (`api/deps.py`) plays the same role. |
 | Verified: env swap requires config only | `config.yaml`'s `storage.provider`, `embedding.provider`, `approval.provider`, `graph.provider`, `secrets.provider`, `auth.provider` are the only switches read by `src/providers/__init__.py`'s factories — confirmed no other file branches on environment. See Configuration Review in the Production Readiness Review. |
 
 ### 1.3 Architecture findings
@@ -82,6 +93,19 @@ app/pages/chat.py or main.py:run_chat()
      -> LLM produces the answer from only that context
   -> citations/graph_paths rendered from RetrievalResult, unchanged
 ```
+
+> **No longer current.** This diagram reflects the tool-calling shape that
+> existed when this review was written. The current `GraphRAGAgent`
+> (`src/agents/graphrag_agent.py`) does not use `agent_framework.ChatAgent` or
+> a `graph_context_tool` decision step at all — it calls `retrieve_context()`
+> and `format_context_for_llm()` directly, unconditionally, in plain Python,
+> then makes one `chat_client.get_response()` call. This was a deliberate
+> performance change (it avoids a full extra LLM generation pass just to
+> decide whether to retrieve) and is documented in that module's own
+> docstring and in [graphrag_retrieval.md](graphrag_retrieval.md). The
+> Gold-only gating conclusion below is unaffected — retrieval still only ever
+> reads the approved graph — but the call path no longer goes through an
+> agent tool-call turn.
 
 **No graph/ontology bypass found.** `retrieval/graphrag_service.py` imports nothing
 from `ApprovalProvider`, `OntologyProvider`, or `StorageProvider.read_candidate_graph()`
@@ -204,7 +228,7 @@ Neo4j data-access layer) rather than multiple concerns bolted together.
 | Graph (Neo4j data-access) | **New this review** | `test_neo4j_loader_queries.py` — fake-`session` tests of `search_chunks`/`get_mentioned_entities`/`get_neighbors`, including hop/limit clamping at both the above-max and below-min boundaries. Previously **absent** — the entire `neo4j_loader.py` query layer (`get_neighbors`'s % -interpolated Cypher, most notably) had zero direct test coverage before this review. |
 | Retrieval (GraphRAG service) | Yes | `test_graphrag_service.py` (178 lines) — business-language guarantee, empty-result handling, and (new) the untrusted-content delimiter guarantee. |
 | Approval workflow | Partial | `test_candidate_graph.py` covers candidate-graph construction from approved/pending state. **Gap**: no test exercises `LocalOntologyRepository`'s save/get round-trip directly, nor the Streamlit approve/reject/merge handlers in `entity_review.py`/`relationship_review.py` (Streamlit page logic is not isolated into testable functions today). |
-| Agent (orchestration) | **Blocked by environment** | `agent_framework` is not installed in this environment (`ModuleNotFoundError` confirmed via direct import attempt) — no agent-level test can import `agent_framework.ChatAgent` to exercise `GraphRAGAgent`/`build_agent`. Per the review plan's own contingency, this is recorded as an environment limitation rather than faking a test that cannot run. The *testable* seam (`graph_context_tool`'s closure over `retrieve_context`/`format_context_for_llm`) is exercised indirectly through `test_graphrag_service.py`. |
+| Agent (orchestration) | **Blocked by environment** | `agent_framework` is not installed in this environment (`ModuleNotFoundError` confirmed via direct import attempt) — no agent-level test can import `agent_framework.ChatAgent` to exercise `GraphRAGAgent`/`build_agent`. Per the review plan's own contingency, this is recorded as an environment limitation rather than faking a test that cannot run. The *testable* seam (`graph_context_tool`'s closure over `retrieve_context`/`format_context_for_llm`) is exercised indirectly through `test_graphrag_service.py`. **No longer current**: the present-day `GraphRAGAgent` doesn't depend on `agent_framework.ChatAgent` or a tool-call seam at all (see the §2.1 note above), so this specific blocker no longer applies — its retrieval/formatting logic is still covered indirectly via `test_graphrag_service.py`, and the agent's own thin orchestration (the direct `retrieve_context()` → `chat_client.get_response()` call) is a much smaller, easier-to-test surface than the old tool-calling shape was. |
 | Security | Partial | The prompt-injection delimiter test doubles as the closest thing to a security test today. **Gap**: no direct test of `AzureKeyVaultSecretsProvider`'s broadened exception handling, or of the chat/publish exception-leakage fix (both would need to mock the Azure SDK/Streamlit surfaces respectively — not attempted here to avoid adding brittle, low-value mock-heavy tests in a review pass). |
 | Connection reuse / provider lifecycle | **New this review** | `test_neo4j_graph_provider.py` — asserts a single `Neo4jLoader` construction reused across `publish`/`search_chunks`/`get_mentioned_entities`/`get_neighbors`, and that `close()` correctly forces a new one on next use. |
 

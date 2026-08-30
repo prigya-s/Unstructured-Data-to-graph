@@ -51,6 +51,12 @@ class FakeOntologyRepository(OntologyRepository):
     def get_approved_relationships(self):
         return [r for r in self._relationships if r.status == WorkflowStatus.APPROVED]
 
+    def save_class_proposal(self, proposal) -> None:
+        raise AssertionError("build_candidates() must not touch class proposals")
+
+    def get_class_proposals(self):
+        return []
+
 
 _CHUNKS = [{"chunk_id": "c1", "content": "Foo talks to Bar.", "document": "d1"}]
 _ENTITIES = [
@@ -59,6 +65,8 @@ _ENTITIES = [
 ]
 _MENTIONS = [
     {"entity_id": "e1", "chunk_id": "c1"},
+    {"entity_id": "e1", "chunk_id": "c1"},
+    {"entity_id": "e2", "chunk_id": "c1"},
     {"entity_id": "e2", "chunk_id": "c1"},
 ]
 _RELATIONSHIPS = [

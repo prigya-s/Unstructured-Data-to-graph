@@ -33,7 +33,7 @@ flowchart TB
     end
 
     subgraph GoldExtract["Gold: Extraction"]
-        EE["EntityExtractionStage\n-> entity_extractor\n(+domain_gazetteer, +heading-to-Topic)"]
+        EE["EntityExtractionStage\n-> entity_extractor\n(+domain_gazetteer)"]
         RE["RelationshipExtractionStage\n-> relationship_extractor\n(+REQUIRES/APPLIES_TO)"]
         HYB["hybrid extraction: ontology_rules first,\nollama (qwen3:14b) fallback for\nlow-yield chunks"]
     end
@@ -100,9 +100,9 @@ flowchart TB
   unchanged/additive inside their stage - they have no inbound edge from
   `config.yaml` or `os.environ`. See [dependency_diagram.md](dependency_diagram.md)
   for the explicit proof of that. `entity_extractor`/`relationship_extractor`
-  gained the `domain_gazetteer`, heading-to-`Topic` promotion, and
-  `REQUIRES`/`APPLIES_TO` logic as additive business logic, still driven
-  entirely by `ontology.yaml` content, not by config/env branches.
+  gained the `domain_gazetteer` and `REQUIRES`/`APPLIES_TO` logic as
+  additive business logic, still driven entirely by `ontology.yaml`
+  content, not by config/env branches.
   `graph_builder`/`neo4j_loader` gained page-link (`LEADS_TO`) extraction
   and `get_linked_documents()` the same way.
 - **Every other box** is a provider interface, selected by `config.yaml`'s
@@ -119,3 +119,20 @@ flowchart TB
 - **The retrieval/agent layer** (bottom subgraph) only reads from
   `GraphDB`'s unlabeled Gold nodes; it has no path back to `Review` or
   `CandGraph`.
+- **Not shown above**: an opt-in OWL/Turtle ontology-authoring layer
+  (`src/ontology/rdf/`) that generates a class hierarchy from
+  `ontology.yaml` and lets new domains subclass it without editing the
+  shared file. It's a files-only side artifact of `OntologyStage`
+  (`ontology.provider: local_turtle`) and an additional vocabulary source
+  for the Ollama extraction fallback - it doesn't add a box to `GoldExtract`
+  or `GoldApproved` because it changes no control flow, only what
+  `entity_extractor`'s LLM fallback is allowed to output and what
+  `OntologyStage` additionally writes to disk. See
+  [owl_turtle_ontology.md](owl_turtle_ontology.md).
+- **Also not shown**: `GraphDB`'s `NEO`/`AURA` boxes are RDF-native at the
+  Gold tier - every Document/Chunk/Entity node additionally carries a `uri`
+  and `:Resource` label, and the database is configured with the
+  neosemantics (n10s) plugin for RDF import/export. This is additive to the
+  same `build_production_graph()` write path already in the diagram, gated
+  on a one-time manual plugin install, and changes no retrieval query - see
+  [neo4j_n10s_setup.md](neo4j_n10s_setup.md).

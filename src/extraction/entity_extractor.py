@@ -102,21 +102,6 @@ def _classify(
     return None
 
 
-def _promote_heading_topic(chunk: dict) -> dict | None:
-    """Promote a chunk's innermost section heading to a Topic entity.
-
-    MYDET pages carry their real semantic anchors in headings ("Mortgage
-    address", "Previous authentication") that the prose-based phrase regex
-    can't reliably lift out of sentence text. section_path falls back to
-    the document_id on headless pages (semantic_chunker.chunk_markdown) -
-    skip those so we don't mint a Topic named after a page id."""
-    section_path = chunk.get("section_path") or ""
-    heading = section_path.rsplit(" > ", 1)[-1].strip()
-    if not heading or heading == chunk.get("document"):
-        return None
-    return {"name": heading, "type": "Topic", "source_chunk": chunk["chunk_id"]}
-
-
 def extract_entities_from_chunk(chunk: dict, ontology: dict) -> list[dict]:
     """Return raw (non-deduplicated) entity mentions found in a single chunk.
 
@@ -147,10 +132,6 @@ def _extract_from_chunk(
             return
         seen_in_chunk.add(key)
         found.append({"name": name, "type": entity_type, "source_chunk": chunk["chunk_id"]})
-
-    topic = _promote_heading_topic(chunk)
-    if topic is not None:
-        _add(topic["name"], topic["type"])
 
     for match in _PHRASE_RE.finditer(chunk["content"]):
         phrase = _clean_phrase(match.group(0).strip())

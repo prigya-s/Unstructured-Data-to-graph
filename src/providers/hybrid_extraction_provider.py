@@ -89,3 +89,8 @@ class HybridExtractionProvider(ExtractionProvider):
             _add_all(self._llm.extract_relationships(llm_chunks, entities, mentions, ontology))
 
         return relationships
+
+    def get_class_proposals(self) -> list[dict]:
+        """Only the LLM leg can flag NO_FIT; the rule-based leg never
+        produces proposals."""
+        return self._llm.get_class_proposals()

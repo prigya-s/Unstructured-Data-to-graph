@@ -27,9 +27,9 @@ class body in those modules).
 | Bronze/Silver/Gold storage (Databricks Volumes) | **Fully aligned** | `DatabricksVolumesProvider` is a `LocalStorageProvider` subclass - a mounted UC Volume is a POSIX path, so no Volumes-specific I/O code exists or is needed. Selecting it is `storage.provider: databricks_volumes` + a Volume-mounted `storage.root`. |
 | Bronze/Silver/Gold storage (Unity Catalog / Delta) | **Implemented, not yet run against a live Warehouse** | `UnityCatalogProvider` delegates every method to the schema-driven `DeltaSqlTableStore`/`BlobStore` (`providers/_delta_sql.py`), generated from `contracts.schemas.TABLE_REGISTRY` - no per-table SQL is hand-written. See `docs/architecture/review_board_assessment.md`. |
 | Semantic chunking | **Fully aligned** | `ChunkingStage` calls `semantic_chunker.chunk_markdown` unmodified. |
-| Embeddings | **Documented no-op locally; real implementation for Databricks** *(as of this review; `OllamaEmbeddingProvider` was added afterward and is now the local default - see `graphrag_retrieval.md`)* | `LocalEmbeddingProvider` is an intentional pass-through (`embedding_vector: null`) - there is no embedding-generation logic to preserve locally. `DatabricksEmbeddingProvider` calls a Model Serving `/invocations` endpoint via stdlib `urllib`, config-driven via `embedding.databricks.*`. |
+| Embeddings | **Real implementation locally and for Databricks** | `LocalEmbeddingProvider`'s intentional pass-through (`embedding_vector: null`) was the local default at the time of this review; `OllamaEmbeddingProvider` was added afterward and is now the local default (see `graphrag_retrieval.md`) - `LocalEmbeddingProvider` remains available as an explicit opt-in no-op. `DatabricksEmbeddingProvider` calls a Model Serving `/invocations` endpoint via stdlib `urllib`, config-driven via `embedding.databricks.*`. |
 | Entity / relationship extraction | **Fully aligned** | `EntityExtractionStage`/`RelationshipExtractionStage` call `entity_extractor`/`relationship_extractor` unmodified. |
-| Business review & approval *(Streamlit at the time of this review; the UI has since been fully rebuilt as a React frontend + FastAPI backend - see `graphrag_retrieval.md`'s "Since implemented" section - the `ApprovalProvider` seam itself is unaffected)* | **Fully aligned locally; real implementation for OntoBricks** | `ApprovalProvider` is `review.repository.OntologyRepository` - unchanged ABC, now reached via `providers.get_approval_provider(config)`. `FutureOntoBricksRepository` upserts via the same `DeltaSqlTableStore.merge_rows()` (atomic `MERGE INTO`), resolving `LocalOntologyRepository`'s documented cross-process write-safety limitation once selected. |
+| Business review & approval (the UI was Streamlit at the time of this review; it has since been fully rebuilt as a React frontend + FastAPI backend - see `graphrag_retrieval.md`'s "Since implemented" section - the `ApprovalProvider` seam itself is unaffected by that rebuild) | **Fully aligned locally; real implementation for OntoBricks** | `ApprovalProvider` is `review.repository.OntologyRepository` - unchanged ABC, now reached via `providers.get_approval_provider(config)`. `FutureOntoBricksRepository` upserts via the same `DeltaSqlTableStore.merge_rows()` (atomic `MERGE INTO`), resolving `LocalOntologyRepository`'s documented cross-process write-safety limitation once selected. |
 | Ontology generation | **Fully aligned** | `OntologyStage` calls `review.publisher.publish_ontology`/`ontology_generator` unmodified via `LocalOntologyProvider`. |
 | Graph load (Neo4j) | **Fully aligned** | `Neo4jGraphProvider` wraps `graph.neo4j_loader.Neo4jLoader` unmodified; only *which* env var names supply credentials is now config-driven. |
 | Graph load (Cosmos DB) | **Stub** | `CosmosGraphProvider` raises `NotImplementedError`. |
@@ -71,14 +71,14 @@ infrastructure, both already working).
    pipeline - 2 files processed, 11 chunks, 24 entities / 42 mentions, 15
    relationships extracted, 24 candidate entities + 15 candidate
    relationships saved, all materialized under `lakehouse/bronze|silver|gold/`.
-3. **Streamlit parity** *(as verified at the time; the UI has since been
+3. **Streamlit parity (as verified at the time)**: approved 5 entities and
+   1 relationship via the `ApprovalProvider` interface (the same interface
+   every Streamlit page already used); `streamlit run app/streamlit_app.py`
+   boots cleanly (HTTP 200) with `app/common.py` routed through
+   `providers.get_approval_provider(load_config())`. The UI has since been
    replaced by React + FastAPI - `app/streamlit_app.py` and `app/common.py`
-   no longer exist, so this step would need re-running against
-   `uvicorn api.main:app` + `web/` to confirm current parity)*: approved 5
-   entities and 1 relationship via the `ApprovalProvider` interface (the
-   same interface every Streamlit page already used); `streamlit run
-   app/streamlit_app.py` boots cleanly (HTTP 200) with `app/common.py`
-   routed through `providers.get_approval_provider(load_config())`.
+   no longer exist, so this specific step would need re-running against
+   `uvicorn api.main:app` + `web/` to confirm current parity.
 4. **End-to-end with live Neo4j**: `publish-ontology` produced 5 approved
    concepts / 1 relationship; `publish-graph` loaded 18 nodes / 23
    relationships into the local Neo4j instance via `Neo4jGraphProvider`.

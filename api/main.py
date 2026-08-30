@@ -33,6 +33,7 @@ from api.routers import (
     ambiguity,
     candidate_graph,
     chat,
+    class_proposals,
     dashboard,
     entities,
     graph_diff,
@@ -69,6 +70,7 @@ app.include_router(dashboard.router)
 app.include_router(entities.router)
 app.include_router(relationships.router)
 app.include_router(ambiguity.router)
+app.include_router(class_proposals.router)
 app.include_router(candidate_graph.router)
 app.include_router(production_graph.router)
 app.include_router(graph_diff.router)

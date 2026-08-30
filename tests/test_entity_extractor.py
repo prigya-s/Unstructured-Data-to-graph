@@ -70,7 +70,11 @@ def test_domain_gazetteer_takes_precedence_over_flat_technology_gazetteer():
     assert ("CAT", "Technology") not in {(e["name"], e["type"]) for e in found}
 
 
-def test_heading_promoted_to_topic_entity():
+def test_section_heading_is_never_promoted_to_an_entity():
+    """section_path is chunk provenance (already written onto the Chunk
+    node in Neo4j - see graph.neo4j_loader), never a mintable domain
+    entity. A heading with no capitalized phrases of its own must produce
+    zero entities, regardless of how deep the section_path is."""
     ontology = {"entity_types": {}, "technology_gazetteer": []}
     chunk = {
         "chunk_id": "c1",
@@ -81,18 +85,4 @@ def test_heading_promoted_to_topic_entity():
 
     found = extract_entities_from_chunk(chunk, ontology)
 
-    assert ("Mortgage address", "Topic") in {(e["name"], e["type"]) for e in found}
-
-
-def test_headless_page_section_path_fallback_does_not_mint_topic():
-    ontology = {"entity_types": {}, "technology_gazetteer": []}
-    chunk = {
-        "chunk_id": "c1",
-        "document": "d1",
-        "section_path": "d1",  # semantic_chunker's fallback: " ... or document_id"
-        "content": "no headings on this page.",
-    }
-
-    found = extract_entities_from_chunk(chunk, ontology)
-
-    assert not any(e["type"] == "Topic" for e in found)
+    assert found == []

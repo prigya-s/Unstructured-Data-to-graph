@@ -200,6 +200,9 @@ class FakeExtractionProvider:
         self.extract_relationships_calls.append((chunks, entities, mentions, ontology))
         return self._relationships_result
 
+    def get_class_proposals(self):
+        return []
+
 
 def test_entity_extraction_stage_reads_from_storage_not_ctx():
     extraction_provider = FakeExtractionProvider(
@@ -245,7 +248,7 @@ def test_relationship_extraction_stage_reads_from_storage_not_ctx():
 def test_approval_stage_reads_from_storage_not_ctx(monkeypatch):
     received = {}
 
-    def fake_build_candidates(entities, mentions, relationships, chunks, repository):
+    def fake_build_candidates(entities, mentions, relationships, chunks, repository, config=None):
         received.update(entities=entities, mentions=mentions, relationships=relationships, chunks=chunks, repository=repository)
         return (1, 1)
 

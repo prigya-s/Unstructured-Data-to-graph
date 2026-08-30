@@ -200,6 +200,114 @@ def test_payload_disables_thinking(monkeypatch):
     assert captured["payload"]["think"] is False
 
 
+def test_no_fit_entity_is_collected_as_a_class_proposal_not_dropped(monkeypatch):
+    provider = OllamaExtractionProvider(_config())
+    chunks = [{"chunk_id": "c1", "content": "CryptoCustodyService is a new offering"}]
+
+    def fake_urlopen(request, timeout):
+        return _FakeResponse(
+            _chat_response(
+                {
+                    "c1": {
+                        "entities": [
+                            {
+                                "name": "CryptoCustodyService",
+                                "type": "NO_FIT",
+                                "suggested_parent": "System",
+                                "confidence_score": 0.7,
+                            }
+                        ],
+                        "relationships": [],
+                    }
+                }
+            )
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    entities, mentions = provider.extract_entities(chunks, ONTOLOGY)
+
+    assert entities == []
+    assert mentions == []
+    proposals = provider.get_class_proposals()
+    assert len(proposals) == 1
+    assert proposals[0]["proposed_name"] == "CryptoCustodyService"
+    assert proposals[0]["suggested_parent"] == "System"
+    assert proposals[0]["source_chunks"] == ["c1"]
+    assert proposals[0]["confidence"] == 0.7
+
+
+def test_no_fit_suggested_parent_outside_allowed_types_is_cleared(monkeypatch):
+    provider = OllamaExtractionProvider(_config())
+    chunks = [{"chunk_id": "c1", "content": "something new"}]
+
+    def fake_urlopen(request, timeout):
+        return _FakeResponse(
+            _chat_response(
+                {
+                    "c1": {
+                        "entities": [
+                            {"name": "NewThing", "type": "NO_FIT", "suggested_parent": "NotAllowed"}
+                        ],
+                        "relationships": [],
+                    }
+                }
+            )
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    provider.extract_entities(chunks, ONTOLOGY)
+
+    [proposal] = provider.get_class_proposals()
+    assert proposal["suggested_parent"] is None
+
+
+def test_get_class_proposals_merges_repeated_name_across_chunks_and_clears(monkeypatch):
+    provider = OllamaExtractionProvider(_config())
+    chunks = [
+        {"chunk_id": "c1", "content": "first mention"},
+        {"chunk_id": "c2", "content": "second mention"},
+    ]
+
+    def fake_urlopen(request, timeout):
+        return _FakeResponse(
+            _chat_response(
+                {
+                    "c1": {
+                        "entities": [
+                            {"name": "NewThing", "type": "NO_FIT", "confidence_score": 0.4}
+                        ],
+                        "relationships": [],
+                    },
+                    "c2": {
+                        "entities": [
+                            {
+                                "name": "newthing",
+                                "type": "NO_FIT",
+                                "suggested_parent": "System",
+                                "confidence_score": 0.9,
+                            }
+                        ],
+                        "relationships": [],
+                    },
+                }
+            )
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    provider.extract_entities(chunks, ONTOLOGY)
+
+    proposals = provider.get_class_proposals()
+    assert len(proposals) == 1
+    assert proposals[0]["suggested_parent"] == "System"
+    assert proposals[0]["confidence"] == 0.9
+    assert set(proposals[0]["source_chunks"]) == {"c1", "c2"}
+
+    assert provider.get_class_proposals() == []
+
+
 def test_chunks_are_grouped_into_batches_of_batch_size(monkeypatch):
     provider = OllamaExtractionProvider(_config(batch_size=2))
     chunks = [

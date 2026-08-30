@@ -1,5 +1,16 @@
 # Enterprise Readiness Review: Azure / Databricks Architecture, Security & Scalability
 
+> **Historical audit.** This review was performed against the Streamlit app
+> (`app/common.py`, `app/pages/*.py`) that existed at the time. That app has
+> since been fully replaced by the FastAPI (`api/`) + React (`web/`) stack
+> described in the current [README](../../README.md) — so any finding below
+> that names an `app/` file is describing a problem that was fixed in code
+> which no longer exists, not a gap in the current stack. The test count in
+> the Testing section below is likewise a snapshot from when this review was
+> written, not the current count. See
+> [production_readiness_review.md](production_readiness_review.md) for the
+> most recent full review.
+
 Reviewed against the Azure Well-Architected Framework, Databricks Lakehouse
 best practices, cloud-native architecture principles, and enterprise security
 standards. Scope: architecture, code quality, security, authentication,
@@ -185,7 +196,9 @@ logic coverage, by explicit scope decision):
 | `tests/test_delta_sql.py` | Catalog/schema identifier validation; generated SQL for create/select/overwrite/merge against a fake DB-API connection; `build_delta_sql_store()` defaults and overrides. |
 | `tests/test_candidate_builder_batching.py` | Batch save methods called exactly once regardless of row count; decided-status rows (APPROVED/REJECTED/MERGED) still skipped. |
 
-41 tests, all passing (`pytest tests/`).
+41 tests, all passing (`pytest tests/`) at the time of this review — the suite
+has grown substantially since (see [production_readiness_review.md](production_readiness_review.md)
+for a more recent count).
 
 ## Production Readiness Score: 80/100
 

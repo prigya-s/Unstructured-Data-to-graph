@@ -27,7 +27,7 @@ from contracts.schemas import TABLE_REGISTRY
 from providers._delta_sql import build_delta_sql_store
 from providers.secrets_provider import SecretsProvider
 
-from .models import CandidateEntity, CandidateRelationship, WorkflowStatus
+from .models import CandidateEntity, CandidateRelationship, ClassProposal, WorkflowStatus
 from .repository import OntologyRepository
 
 
@@ -75,3 +75,17 @@ class FutureOntoBricksRepository(OntologyRepository):
         return [
             r for r in self.get_candidate_relationships() if r.status == WorkflowStatus.APPROVED
         ]
+
+    def save_class_proposal(self, proposal: ClassProposal) -> None:
+        raise NotImplementedError(
+            "ClassProposal storage has no Delta/SQL-Warehouse table yet - "
+            "add a 'class_proposals' entry to contracts.schemas.TABLE_REGISTRY "
+            "and implement this the same way save_candidate_entity() is implemented."
+        )
+
+    def get_class_proposals(self) -> list[ClassProposal]:
+        raise NotImplementedError(
+            "ClassProposal storage has no Delta/SQL-Warehouse table yet - "
+            "add a 'class_proposals' entry to contracts.schemas.TABLE_REGISTRY "
+            "and implement this the same way get_candidate_entities() is implemented."
+        )

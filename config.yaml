@@ -82,8 +82,17 @@ approval:
   #   schema: kg_schema
 
 ontology:
-  provider: local
+  # local: unchanged - approved concepts -> gold/ontology/ontology.json only.
+  # local_turtle: does everything `local` does, plus serializes the same
+  #   approved entities/relationships as OWL/Turtle to
+  #   gold/ontology/ontology.ttl (owl:Class instances + owl:sameAs for
+  #   merged entities). Also feeds any configured turtle_modules into the
+  #   Ollama extraction fallback's allowed-entity-type vocabulary. See
+  #   docs/owl_turtle_ontology.md.
+  provider: local  # local | local_turtle
   schema_path: ontology/ontology.yaml  # relative to src/
+  # turtle_modules:            # only read when provider: local_turtle - one
+  #   - ontology/rdf/domains/change_of_address.ttl  #   path per domain's hand-authored .ttl file, relative to src/
 
 graph:
   # neo4j: local Neo4j Desktop/Docker (NEO4J_URI=bolt://... or neo4j://...)

@@ -25,6 +25,8 @@ import time
 
 from neo4j import GraphDatabase
 
+from ontology.rdf.namespaces import CHUNK_NS, CORE_NS, DOCUMENT_NS, ENTITY_NS
+
 logger = logging.getLogger("kg_local.neo4j_loader")
 
 # Whitelist of relationship types we allow to be interpolated into Cypher
@@ -51,6 +53,10 @@ _CONSTRAINTS = [
     "CREATE CONSTRAINT chunk_id IF NOT EXISTS FOR (c:Chunk) REQUIRE c.id IS UNIQUE",
     "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
     "CREATE CONSTRAINT candidate_entity_id IF NOT EXISTS FOR (e:CandidateEntity) REQUIRE e.id IS UNIQUE",
+    # Required by neosemantics (n10s) for RDF import/export - every
+    # :Resource-labeled (Gold-tier only) node gets a unique `uri`. See
+    # docs/architecture/neo4j_n10s_setup.md.
+    "CREATE CONSTRAINT n10s_unique_uri IF NOT EXISTS FOR (r:Resource) REQUIRE r.uri IS UNIQUE",
 ]
 
 _BATCH_SIZE = 500
@@ -119,12 +125,14 @@ class Neo4jLoader:
         )
         raise last_error
 
-    def _run_batched(self, session, query: str, rows: list[dict]) -> int:
+    def _run_batched(self, session, query: str, rows: list[dict], **extra_params) -> int:
         total = 0
         start = time.perf_counter()
         for i in range(0, len(rows), _BATCH_SIZE):
             batch = rows[i : i + _BATCH_SIZE]
-            session.execute_write(lambda tx, q=query, b=batch: tx.run(q, rows=b).consume())
+            session.execute_write(
+                lambda tx, q=query, b=batch, p=extra_params: tx.run(q, rows=b, **p).consume()
+            )
             total += len(batch)
         logger.info(
             "graph_operation operation=write rows=%d duration_ms=%d",
@@ -145,7 +153,38 @@ class Neo4jLoader:
         with self._driver.session(database=self.database) as session:
             for statement in _CONSTRAINTS:
                 session.execute_write(lambda tx, q=statement: tx.run(q).consume())
+            self._init_rdf_config(session)
         logger.info("graph_operation operation=create_constraints count=%d", len(_CONSTRAINTS))
+
+    def _init_rdf_config(self, session) -> None:
+        """Registers the neosemantics (n10s) graph config and the core/kg
+        namespace prefixes, so RDF export can reconstruct full IRIs from
+        node labels. Best-effort: if the n10s.* procedures aren't found
+        (plugin not installed - see docs/architecture/neo4j_n10s_setup.md),
+        this logs a warning and returns rather than failing
+        create_constraints() for everyone who hasn't done the one-time
+        manual Desktop install yet."""
+        try:
+            session.execute_write(
+                lambda tx: tx.run("CALL n10s.graphconfig.init({handleVocabUris: 'MAP'})").consume()
+            )
+            session.execute_write(
+                lambda tx: tx.run(
+                    "CALL n10s.nsprefixes.add('core', $ns)", ns=str(CORE_NS)
+                ).consume()
+            )
+            session.execute_write(
+                lambda tx: tx.run(
+                    "CALL n10s.nsprefixes.add('kg', $ns)", ns=str(ENTITY_NS)
+                ).consume()
+            )
+            logger.info("graph_operation operation=init_rdf_config status=ok")
+        except Exception as exc:
+            logger.warning(
+                "graph_operation operation=init_rdf_config status=skipped error=%s "
+                "(neosemantics plugin not installed? see docs/architecture/neo4j_n10s_setup.md)",
+                exc,
+            )
 
     def create_indexes(self, embedding_dimensions: int | None = None) -> None:
         """Idempotently ensures all required indexes exist. Safe to call at
@@ -175,9 +214,11 @@ class Neo4jLoader:
             d.space_key = row.space_key,
             d.version = row.version,
             d.content_hash = row.content_hash,
-            d.parent_page_id = row.parent_page_id
+            d.parent_page_id = row.parent_page_id,
+            d.uri = $ns + row.id
+        SET d:Resource
         """
-        return self._run_batched(session, query, documents)
+        return self._run_batched(session, query, documents, ns=str(DOCUMENT_NS))
 
     def load_chunks(self, session, chunks: list[dict]) -> int:
         query = """
@@ -187,9 +228,11 @@ class Neo4jLoader:
             c.section_path = row.section_path,
             c.content = row.content,
             c.token_count = row.token_count,
-            c.embedding = row.embedding
+            c.embedding = row.embedding,
+            c.uri = $ns + row.id
+        SET c:Resource
         """
-        return self._run_batched(session, query, chunks)
+        return self._run_batched(session, query, chunks, ns=str(CHUNK_NS))
 
     def create_vector_index(self, session, dimensions: int) -> None:
         """Idempotent - safe to call on every load_graph(). Only meaningful
@@ -215,9 +258,11 @@ class Neo4jLoader:
         MERGE (e:Entity {id: row.id})
         SET e.name = row.name,
             e.type = row.type,
-            e.source_chunk = row.source_chunk
+            e.source_chunk = row.source_chunk,
+            e.uri = $ns + row.id
+        SET e:Resource
         """
-        count = self._run_batched(session, query, entities)
+        count = self._run_batched(session, query, entities, ns=str(ENTITY_NS))
 
         # Add the ontology type as a secondary label for richer visual
         # grouping in Neo4j Browser (e.g. :Entity:Service). APOC-free.

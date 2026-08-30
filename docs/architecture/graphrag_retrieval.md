@@ -1,15 +1,33 @@
 # GraphRAG Retrieval + Conversational AI Layer
 
-## Summary
+## In plain terms
 
-The pipeline previously stopped at "approved graph published to Neo4j" -
-there was no way to ask it a question. This extends the existing provider
-architecture (`DocumentSource`, `StorageProvider`, `ApprovalProvider`,
-`OntologyProvider`, `GraphProvider`, `EmbeddingProvider`, plus
-`SecretsProvider`/`AuthProvider`) with a Retrieval Layer and a
-Conversational Layer. Nothing about extraction, chunking, entity/relationship
-extraction, approval, ontology generation, or Neo4j publishing changed - this
-is purely additive:
+Once a graph has been published, someone can ask it a question in plain
+English instead of writing a database query. Behind the scenes:
+
+1. The question is turned into a vector (a kind of numeric fingerprint) and
+   matched against the same fingerprints stored for every chunk of every
+   document, to find the passages most likely to be relevant.
+2. From those passages, the system follows the graph outward — to the things
+   they mention, and to things related to those — building up a small,
+   relevant slice of the knowledge graph.
+3. It also checks whether the source documents point onward to other pages
+   (a "see also" style link), so it can suggest sensible next steps.
+4. All of that — the passages, the related things, and the next steps — is
+   handed to the AI model along with the question, and the model writes an
+   answer grounded only in that material. It's told plainly to say "I don't
+   have enough approved information" rather than guess if nothing relevant
+   was found.
+5. The answer streams onto the screen as it's written, and always closes
+   with a list of the source documents it drew from — never internal IDs,
+   database terms, or anything a non-technical reader wouldn't recognize.
+
+A repeated or closely-rephrased question skips all of that and returns the
+previous answer instantly, since re-computing the same answer would be
+wasteful.
+
+This whole layer is additive: nothing about how documents get extracted,
+chunked, reviewed, or approved changed to add it.
 
 ```
 Docling extraction -> Chunking -> Embeddings -> Entity/Relationship
@@ -21,6 +39,12 @@ extraction -> Approval -> Ontology -> Production Graph -> Neo4j
                               retrieval - no tool-call turn) -> "Ask the
                               Knowledge Graph" (React page + CLI, streamed)
 ```
+
+The rest of this document is a technical reference for engineers working on
+this layer — architecture diagrams, sequence diagrams, config keys, and
+implementation history.
+
+## Summary
 
 ## New abstractions (same factory convention as every existing provider)
 

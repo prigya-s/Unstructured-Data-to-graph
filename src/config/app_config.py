@@ -58,6 +58,7 @@ class ApprovalConfig:
 class OntologyConfig:
     provider: str = "local"
     schema_path: str = "ontology/ontology.yaml"
+    turtle_modules: list = field(default_factory=list)
 
 
 @dataclass
@@ -151,6 +152,14 @@ class AppConfig:
         if path.is_absolute():
             return path
         return (_SRC_DIR / path).resolve()
+
+    @property
+    def turtle_module_paths(self) -> list[Path]:
+        resolved = []
+        for module in self.ontology.turtle_modules:
+            path = Path(module)
+            resolved.append(path if path.is_absolute() else (_SRC_DIR / path).resolve())
+        return resolved
 
     @property
     def log_dir(self) -> Path:

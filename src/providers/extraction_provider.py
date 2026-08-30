@@ -25,3 +25,11 @@ class ExtractionProvider(ABC):
         self, chunks: list[dict], entities: list[dict], mentions: list[dict], ontology: dict
     ) -> list[dict]:
         """Returns [{"source","relationship","target","source_chunk", ...}]."""
+
+    def get_class_proposals(self) -> list[dict]:
+        """NO_FIT class proposals accumulated since the last call, then
+        cleared - see review.candidate_builder.build_class_proposals().
+        Default: no proposals. Only a provider that can flag "this doesn't
+        fit any existing type" (today, just OllamaExtractionProvider)
+        overrides this."""
+        return []

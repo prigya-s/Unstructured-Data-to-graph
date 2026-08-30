@@ -53,6 +53,7 @@ from pipeline.stages.graph_stage import GraphStage  # noqa: E402
 from pipeline.stages.ingestion_stage import IngestionStage  # noqa: E402
 from pipeline.stages.ontology_stage import OntologyStage  # noqa: E402
 from pipeline.stages.relationship_extraction_stage import RelationshipExtractionStage  # noqa: E402
+from ontology.rdf.graph_loader import enrich_ontology_with_rdf  # noqa: E402
 
 logger = logging.getLogger("kg_local")
 
@@ -64,7 +65,8 @@ _SOP_ID_SUFFIX_RE = re.compile(r"Q\d+$")
 
 def load_ontology(config: AppConfig) -> dict:
     with open(config.ontology_schema_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        base_ontology = yaml.safe_load(f)
+    return enrich_ontology_with_rdf(config, base_ontology)
 
 
 def build_context(config: AppConfig, docs_dir: str | None = None) -> PipelineContext:
@@ -285,6 +287,8 @@ def run_publish_ontology(run_id: str) -> None:
     print(f"Approved entities:       {ontology['stats']['total_entities']}")
     print(f"Approved relationships:  {ontology['stats']['total_relationships']}")
     print(f"Written to: {ctx.config.storage_root / 'gold' / 'ontology' / 'ontology.json'}")
+    if ontology.get("ttl_path"):
+        print(f"Turtle export written to: {ontology['ttl_path']}")
     print(f"Log file: {log_path}")
 
 

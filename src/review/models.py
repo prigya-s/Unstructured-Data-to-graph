@@ -149,3 +149,54 @@ class CandidateRelationship:
 
 def make_relationship_id(source_entity: str, relationship_type: str, target_entity: str) -> str:
     return f"rel__{source_entity}__{relationship_type}__{target_entity}"
+
+
+@dataclass
+class ClassProposal:
+    id: str
+    proposed_name: str
+    suggested_parent: str | None
+    evidence: str
+    source_chunks: list[str]
+    confidence: float
+    status: WorkflowStatus
+    target_domain: str | None = None
+    reviewer: str | None = None
+    review_timestamp: str | None = None
+    history: list[HistoryEntry] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "proposed_name": self.proposed_name,
+            "suggested_parent": self.suggested_parent,
+            "evidence": self.evidence,
+            "source_chunks": self.source_chunks,
+            "confidence": self.confidence,
+            "status": self.status.value,
+            "target_domain": self.target_domain,
+            "reviewer": self.reviewer,
+            "review_timestamp": self.review_timestamp,
+            "history": [h.to_dict() for h in self.history],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ClassProposal":
+        return cls(
+            id=d["id"],
+            proposed_name=d["proposed_name"],
+            suggested_parent=d.get("suggested_parent"),
+            evidence=d.get("evidence", ""),
+            source_chunks=list(d.get("source_chunks") or []),
+            confidence=float(d.get("confidence", 0.5)),
+            status=WorkflowStatus(d["status"]),
+            target_domain=d.get("target_domain"),
+            reviewer=d.get("reviewer"),
+            review_timestamp=d.get("review_timestamp"),
+            history=[HistoryEntry.from_dict(h) for h in d.get("history") or []],
+        )
+
+
+def make_proposal_id(proposed_name: str) -> str:
+    normalized = proposed_name.strip().lower().replace(" ", "_")
+    return f"proposal__{normalized}"

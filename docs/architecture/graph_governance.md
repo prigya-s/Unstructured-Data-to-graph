@@ -1,5 +1,36 @@
 # Graph Governance: Silver/Gold Layers
 
+## In plain terms
+
+There are two versions of the knowledge graph, and it matters which one
+you're looking at:
+
+- The **draft graph** (called "Silver" or the "Candidate Graph" elsewhere in
+  this project) is the computer's current best guess — built fresh from
+  everything extracted so far that hasn't been explicitly rejected. It
+  changes every time new documents are ingested, and nobody has signed off
+  on it.
+- The **published graph** ("Gold" / "Production Graph") only contains what a
+  business reviewer has actually approved. It only changes when someone
+  clicks Publish.
+
+Both versions can live in the same Neo4j database at once — they're kept
+apart by giving the draft graph's nodes a different internal label, the same
+way you might use a different colored folder for drafts vs. final copies in
+the same filing cabinet. Every question anyone asks the graph, and every
+query the "Production Graph" page runs, only ever looks in the
+published-graph folder. The draft graph isn't hidden because it's locked
+away — it's hidden because nothing ever thinks to look there.
+
+Approving something on the Review page updates the draft graph and the
+"what would change if I approved everything pending" comparison instantly —
+no waiting, no separate refresh step. Nothing is actually live in the
+published graph, though, until Publish is run.
+
+The rest of this document is a technical reference for engineers — the exact
+artifact map, the diff algorithm, and how the label-based separation is
+implemented and enforced.
+
 ## Summary
 
 The pipeline's flow from extraction to a published graph is split into two

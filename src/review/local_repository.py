@@ -24,7 +24,7 @@ import json
 import threading
 from pathlib import Path
 
-from .models import CandidateEntity, CandidateRelationship, WorkflowStatus
+from .models import CandidateEntity, CandidateRelationship, ClassProposal, WorkflowStatus
 from .repository import OntologyRepository
 
 _LOCK = threading.Lock()
@@ -38,6 +38,7 @@ class LocalOntologyRepository(OntologyRepository):
         self.review_dir.mkdir(parents=True, exist_ok=True)
         self.entities_path = self.review_dir / "candidate_entities.json"
         self.relationships_path = self.review_dir / "candidate_relationships.json"
+        self.class_proposals_path = self.review_dir / "class_proposals.json"
 
     # -- raw file I/O -----------------------------------------------------
 
@@ -124,3 +125,34 @@ class LocalOntologyRepository(OntologyRepository):
         return [
             r for r in self.get_candidate_relationships() if r.status == WorkflowStatus.APPROVED
         ]
+
+    def save_class_proposal(self, proposal: ClassProposal) -> None:
+        with _LOCK:
+            rows = self._read_rows(self.class_proposals_path)
+            row = proposal.to_dict()
+            for i, existing in enumerate(rows):
+                if existing["id"] == row["id"]:
+                    rows[i] = row
+                    break
+            else:
+                rows.append(row)
+            self._write_rows(self.class_proposals_path, rows)
+
+    def save_class_proposals(self, proposals: list[ClassProposal]) -> None:
+        if not proposals:
+            return
+        with _LOCK:
+            rows = self._read_rows(self.class_proposals_path)
+            by_id = {row["id"]: i for i, row in enumerate(rows)}
+            for proposal in proposals:
+                row = proposal.to_dict()
+                if row["id"] in by_id:
+                    rows[by_id[row["id"]]] = row
+                else:
+                    by_id[row["id"]] = len(rows)
+                    rows.append(row)
+            self._write_rows(self.class_proposals_path, rows)
+
+    def get_class_proposals(self) -> list[ClassProposal]:
+        rows = self._read_rows(self.class_proposals_path)
+        return [ClassProposal.from_dict(r) for r in rows]

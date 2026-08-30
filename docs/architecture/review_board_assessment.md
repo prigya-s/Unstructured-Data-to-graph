@@ -54,11 +54,11 @@ real credentials, not writing more code.
 
 **Why:** No embedding-generation code existed anywhere in the codebase
 (confirmed by search during the original refactor) - `LocalEmbeddingProvider`
-is an intentional no-op pass-through. `DatabricksEmbeddingProvider` raised
-`NotImplementedError` unconditionally. *(As of this review; `OllamaEmbeddingProvider`
-was added afterward and is now the local default - `LocalEmbeddingProvider`
-remains available as an explicit opt-in no-op for offline dry runs. See
-`graphrag_retrieval.md`.)*
+is an intentional no-op pass-through, and was the local default at the time
+of this review. `DatabricksEmbeddingProvider` raised `NotImplementedError`
+unconditionally. `OllamaEmbeddingProvider` was added afterward and is now
+the local default; `LocalEmbeddingProvider` remains available as an
+explicit opt-in no-op for offline dry runs. See `graphrag_retrieval.md`.
 
 **Refactor:** Implemented `embed_chunks()` as a batched POST to a
 Databricks Model Serving `/serving-endpoints/<name>/invocations` endpoint

@@ -119,7 +119,9 @@ reflected exactly, with no incremental-delete bookkeeping.
   `ingest` (which runs through `CandidateGraphStage`, now a graph-writing
   stage) and `publish-graph`.
 - Once per Streamlit process, from `app/common.py`'s `get_graph_provider()`,
-  guarded by a module-level flag so reruns don't repeat it.
+  guarded by a module-level flag so reruns don't repeat it. (The app has
+  since been rebuilt as FastAPI + React; the same once-per-process
+  initialization now happens via `api/deps.py`.)
 
 ### Observability
 
@@ -243,6 +245,11 @@ Databricks/production), never hardcoded.
       indexes are created and a full pipeline round trip succeeds.
 
 ## Files changed
+
+The `app/` files below reflect the Streamlit UI that existed at the time of
+this migration; that UI has since been fully rebuilt as FastAPI (`api/`) +
+React (`web/`), and none of the listed `app/` files exist anymore. The
+equivalent initialization today lives in `api/deps.py`.
 
 - `src/providers/graph_provider.py` — redesigned `GraphProvider` ABC (13 methods)
 - `src/graph/neo4j_loader.py` — retries, managed transactions, `create_indexes()`,

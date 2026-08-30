@@ -122,7 +122,11 @@ def get_ontology_provider(config: AppConfig) -> OntologyProvider:
         from .local_ontology_provider import LocalOntologyProvider
 
         return LocalOntologyProvider(config)
-    raise ValueError(f"Unknown ontology.provider '{provider}'. Valid values: local.")
+    if provider == "local_turtle":
+        from .turtle_ontology_provider import TurtleOntologyProvider
+
+        return TurtleOntologyProvider(config)
+    raise ValueError(f"Unknown ontology.provider '{provider}'. Valid values: local, local_turtle.")
 
 
 def get_graph_provider(config: AppConfig) -> GraphProvider:

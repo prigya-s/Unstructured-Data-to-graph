@@ -6,7 +6,11 @@ src/prompts/__init__.py.
 
 The model classifies into the *existing* ontology vocabulary (entity_types/
 relationship_types from ontology.yaml) rather than inventing new categories,
-so ontology governance is unchanged from the rule-based extractor.
+so ontology governance is unchanged from the rule-based extractor. The one
+escape hatch is "NO_FIT" (see SYSTEM_PROMPT below): a clear, significant
+banking concept that genuinely doesn't fit any allowed type is flagged for
+human review instead of being guessed at or silently dropped - see
+OllamaExtractionProvider._collect_no_fit().
 
 The prompt is always batch-shaped (one or more chunks per call): most of
 this corpus's chunks are far smaller than the model's context window, so
@@ -23,11 +27,20 @@ SYSTEM_PROMPT = (
     "graph. You are given one or more document chunks, each labeled with its "
     "chunk_id, and a fixed ontology of allowed entity types and relationship "
     "types. Extract only entities and relationships that use those exact "
-    "type names - never invent a new type. Treat each chunk independently: "
-    "only extract relationships between entities that appear in the same "
-    "chunk. If nothing in a chunk matches an allowed type, return empty "
-    "lists for that chunk_id. Respond with a single JSON object and nothing "
-    "else - no prose, no markdown code fences."
+    "type names - never invent a new type name. Treat each chunk "
+    "independently: only extract relationships between entities that appear "
+    "in the same chunk. If nothing in a chunk matches an allowed type, "
+    "return empty lists for that chunk_id.\n\n"
+    "The one exception: if an entity is a clear, significant banking "
+    "concept that genuinely does not fit any allowed type - not just a poor "
+    "match, a real gap in the ontology - set its \"type\" to \"NO_FIT\" and "
+    "add a \"suggested_parent\" field naming the closest allowed type as its "
+    "broader category (e.g. a novel custody product -> "
+    "suggested_parent: \"Product\"). Use NO_FIT sparingly: at most one or "
+    "two per chunk, only for concepts you are confident a human reviewer "
+    "would agree deserve a new ontology class.\n\n"
+    "Respond with a single JSON object and nothing else - no prose, no "
+    "markdown code fences."
 )
 
 _OUTPUT_SCHEMA = {
@@ -35,7 +48,12 @@ _OUTPUT_SCHEMA = {
         {
             "chunk_id": "must match one of the chunk_id values given below, exactly",
             "entities": [
-                {"name": "string", "type": "one of the allowed entity types", "confidence_score": "number 0-1"}
+                {
+                    "name": "string",
+                    "type": "one of the allowed entity types, or NO_FIT",
+                    "confidence_score": "number 0-1",
+                    "suggested_parent": "only when type is NO_FIT: closest allowed entity type",
+                }
             ],
             "relationships": [
                 {

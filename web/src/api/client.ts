@@ -321,6 +321,48 @@ export function dismissAmbiguity(id: string): Promise<CandidateEntityDTO> {
   return request<CandidateEntityDTO>(`/api/ambiguity/${id}/dismiss`, { method: "PATCH" });
 }
 
+export interface ClassProposalDTO {
+  id: string;
+  proposed_name: string;
+  suggested_parent: string | null;
+  evidence: string;
+  source_chunks: string[];
+  confidence: number;
+  status: "NEW" | "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "MERGED";
+  target_domain: string | null;
+  reviewer: string | null;
+  review_timestamp: string | null;
+  history: HistoryEntryDTO[];
+}
+
+export function getClassProposals(): Promise<ClassProposalDTO[]> {
+  return request<ClassProposalDTO[]>("/api/class-proposals");
+}
+
+export function saveClassProposal(
+  id: string,
+  body: { suggested_parent: string | null; target_domain: string | null; comment?: string },
+): Promise<ClassProposalDTO> {
+  return request<ClassProposalDTO>(`/api/class-proposals/${id}/save`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function approveClassProposal(id: string, comment?: string): Promise<ClassProposalDTO> {
+  return request<ClassProposalDTO>(`/api/class-proposals/${id}/approve`, {
+    method: "PATCH",
+    body: JSON.stringify({ comment }),
+  });
+}
+
+export function rejectClassProposal(id: string, comment?: string): Promise<ClassProposalDTO> {
+  return request<ClassProposalDTO>(`/api/class-proposals/${id}/reject`, {
+    method: "PATCH",
+    body: JSON.stringify({ comment }),
+  });
+}
+
 export interface PublishSummaryResponse {
   approved_entities: number;
   approved_relationships: number;

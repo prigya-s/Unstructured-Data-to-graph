@@ -77,7 +77,7 @@ flowchart LR
     subgraph BusinessLogic["Business logic - zero inbound edges from CFG/ENV"]
         B1["extract/docling_parser.py"]
         B2["chunking/semantic_chunker.py"]
-        B3["extraction/entity_extractor.py\n(+domain_gazetteer, +heading-to-Topic)"]
+        B3["extraction/entity_extractor.py\n(+domain_gazetteer)"]
         B4["extraction/relationship_extractor.py\n(+REQUIRES/APPLIES_TO)"]
         B5["review/candidate_builder.py"]
         B6["review/ontology_generator.py + publisher.py"]
@@ -105,9 +105,9 @@ flowchart LR
   business-logic function plain data (dicts, lists, an `OntologyRepository`
   instance) - never a `Path`, an env var, or a config value. This still
   holds for the MYDET-domain-fit additions: `entity_extractor.py`'s
-  `domain_gazetteer` lookups and heading-to-`Topic` promotion, and
-  `relationship_extractor.py`'s `REQUIRES`/`APPLIES_TO` trigger matching,
-  are driven entirely by `ontology.yaml` content passed in as a plain
+  `domain_gazetteer` lookups and `relationship_extractor.py`'s
+  `REQUIRES`/`APPLIES_TO` trigger matching are driven entirely by
+  `ontology.yaml` content passed in as a plain
   dict by the Stage - no new config/env edge was added.
 - `HybridExtractionProvider` (`P7`) composes two other providers
   (`OntologyRulesExtractionProvider` always first, an LLM provider as

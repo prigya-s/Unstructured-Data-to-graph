@@ -129,6 +129,33 @@ def test_relationships_routed_to_the_provider_that_extracted_each_chunk(monkeypa
     assert relationships == []
 
 
+def test_get_class_proposals_forwards_to_llm_leg_only(monkeypatch):
+    provider = HybridExtractionProvider(_config())
+    chunks = [{"chunk_id": "c2", "content": "system uptime metrics were reviewed yesterday."}]
+
+    def fake_urlopen(request, timeout):
+        batch = _chunk_ids_in_prompt(request)
+        return _FakeResponse(
+            _llm_response(
+                {
+                    cid: {
+                        "entities": [{"name": "CryptoCustodyService", "type": "NO_FIT"}],
+                        "relationships": [],
+                    }
+                    for cid in batch
+                }
+            )
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    provider.extract_entities(chunks, ONTOLOGY)
+
+    proposals = provider.get_class_proposals()
+    assert [p["proposed_name"] for p in proposals] == ["CryptoCustodyService"]
+    assert provider.get_class_proposals() == []
+
+
 def test_min_entities_per_chunk_is_configurable(monkeypatch):
     provider = HybridExtractionProvider(_config(min_entities_per_chunk=2))
     chunks = [{"chunk_id": "c1", "content": "Alice Chen is the Lead Engineer."}]

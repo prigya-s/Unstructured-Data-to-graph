@@ -12,6 +12,15 @@
 # relationship_types: each type carries a list of natural-language
 #   "triggers" used to detect that relationship between two entities
 #   mentioned in the same sentence.
+#
+# domain/range (optional, entity type names; range may be a list): FIBO-
+#   style constraint on which entity types a relationship may connect,
+#   emitted as rdfs:domain/rdfs:range by build_core_ontology.py and
+#   checked advisory-only (never blocking) by
+#   ontology.rdf.guardrails.check_relationship_type_mismatch - see
+#   docs/architecture/owl_turtle_ontology.md. Only declared where the
+#   relationship genuinely implies fixed types; absence means
+#   "unconstrained," not "invalid."
 # =====================================================================
 
 entity_types:
@@ -130,13 +139,6 @@ entity_types:
       - branch
       - telephony
 
-  # Topic has no keywords: it is never classified via _classify()'s
-  # suffix-matching path. Instead entity_extractor promotes each chunk's
-  # section heading (chunk["section_path"]'s last segment) directly to a
-  # Topic entity - see entity_extractor._promote_heading_topic().
-  Topic:
-    keywords: []
-
 technology_gazetteer:
   - Kubernetes
   - Docker
@@ -195,6 +197,8 @@ relationship_types:
       - communicates with
 
   OWNS:
+    domain: Team
+    range: [System, Service, Application]
     triggers:
       - owns
       - is responsible for
@@ -227,6 +231,8 @@ relationship_types:
       - redirected to
 
   ESCALATES_TO:
+    domain: Channel
+    range: Team
     triggers:
       - escalate to
       - escalated to

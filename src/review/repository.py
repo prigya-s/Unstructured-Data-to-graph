@@ -20,7 +20,7 @@ import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from .models import CandidateEntity, CandidateRelationship
+from .models import CandidateEntity, CandidateRelationship, ClassProposal
 
 
 class OntologyRepository(ABC):
@@ -62,6 +62,21 @@ class OntologyRepository(ABC):
     @abstractmethod
     def get_approved_relationships(self) -> list[CandidateRelationship]:
         """Relationships with status == APPROVED only."""
+        ...
+
+    @abstractmethod
+    def save_class_proposal(self, proposal: ClassProposal) -> None:
+        ...
+
+    def save_class_proposals(self, proposals: list[ClassProposal]) -> None:
+        """Default: one save_class_proposal() call per row - see
+        save_candidate_entities()'s docstring for why this exists."""
+        for proposal in proposals:
+            self.save_class_proposal(proposal)
+
+    @abstractmethod
+    def get_class_proposals(self) -> list[ClassProposal]:
+        """All class proposals regardless of status."""
         ...
 
 
