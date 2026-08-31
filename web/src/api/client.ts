@@ -244,7 +244,7 @@ export function getEntities(): Promise<CandidateEntityDTO[]> {
 
 export function saveEntity(
   id: string,
-  body: { definition: string; business_meaning: string; comment?: string },
+  body: { name: string; definition: string; business_meaning: string; comment?: string },
 ): Promise<CandidateEntityDTO> {
   return request<CandidateEntityDTO>(`/api/entities/${id}/save`, { method: "PATCH", body: JSON.stringify(body) });
 }

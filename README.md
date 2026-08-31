@@ -151,6 +151,7 @@ kg-local/
 ├── docs/architecture/           # migration assessment + mermaid diagrams + local->Databricks mapping
 │   ├── graph_governance.md        # Silver/Gold artifact map, diff algorithm, gating invariant
 │   ├── graphrag_retrieval.md      # retrieval/agent architecture, sequence diagram, implementation plan
+│   ├── entity_type_governance.md  # how repeat ingestion stays inside existing entity types (rules -> constrained LLM -> reviewed NO_FIT proposal)
 │   └── owl_turtle_ontology.md     # NEW - OWL/Turtle ontology-authoring layer (namespaces, core.ttl, domain modules, local_turtle provider)
 ├── requirements.txt
 ├── .env
@@ -303,6 +304,10 @@ to read plain files from `docs/` instead — see
    matching first — including a lookup table for bare acronyms (e.g.
    `IVR`→`Channel`, `SAMM`→`System`) — and only asks the AI model (Ollama
    `qwen3:14b` by default) for chunks where the rules alone found too little.
+   Both stages are limited to the entity types that already exist; the AI
+   model can flag `NO_FIT` for something that matches none of them, but that
+   only ever creates a reviewable Class Proposal, never a new type on its
+   own — see [`docs/architecture/entity_type_governance.md`](docs/architecture/entity_type_governance.md).
 6. Pull out how those things relate to each other — relationships like
    `USES, DEPENDS_ON, CONNECTS_TO, OWNS, CONTAINS, IMPLEMENTS, REFERENCES,
    REFERS_TO, ESCALATES_TO, REQUIRES, APPLIES_TO`
@@ -676,6 +681,9 @@ nothing else in the pipeline, UI, or publisher needs to change.
   adding an OWL/Turtle file under `src/ontology/rdf/domains/` that builds on
   the shared vocabulary — see
   [docs/architecture/owl_turtle_ontology.md](docs/architecture/owl_turtle_ontology.md).
+  This is also what happens automatically when a reviewer approves a Class
+  Proposal — see
+  [docs/architecture/entity_type_governance.md](docs/architecture/entity_type_governance.md).
   The published Neo4j graph is RDF-native under the hood (using
   neosemantics/n10s for RDF import/export — retrieval itself stays plain
   Cypher) — see

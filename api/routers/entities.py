@@ -21,6 +21,7 @@ _TERMINAL_STATUSES = (WorkflowStatus.APPROVED, WorkflowStatus.REJECTED, Workflow
 
 
 class SaveEntityBody(BaseModel):
+    name: str
     definition: str
     business_meaning: str
     comment: str | None = None
@@ -59,9 +60,10 @@ def save_entity(
     reviewer: str = Depends(deps.get_current_reviewer),
 ) -> dict:
     entity = _get_entity_or_404(repo, entity_id)
+    entity.name = body.name
     entity.definition = body.definition
     entity.business_meaning = body.business_meaning
-    add_history(entity, reviewer, "edit", body.comment or "Definition/business meaning updated.")
+    add_history(entity, reviewer, "edit", body.comment or "Name/definition/business meaning updated.")
     repo.save_candidate_entity(entity)
     return entity.to_dict()
 

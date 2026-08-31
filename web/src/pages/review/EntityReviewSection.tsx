@@ -147,8 +147,8 @@ export default function EntityReviewSection() {
             entity={entity}
             approvedEntities={approvedEntities}
             busy={busyId === entity.id}
-            onSave={(definition, businessMeaning, comment) =>
-              withBusy(entity.id, () => saveEntity(entity.id, { definition, business_meaning: businessMeaning, comment }))
+            onSave={(name, definition, businessMeaning, comment) =>
+              withBusy(entity.id, () => saveEntity(entity.id, { name, definition, business_meaning: businessMeaning, comment }))
             }
             onApprove={(comment) => withBusy(entity.id, () => approveEntity(entity.id, comment))}
             onReject={(comment) => withBusy(entity.id, () => rejectEntity(entity.id, comment))}
@@ -172,11 +172,12 @@ function EntityRow({
   entity: CandidateEntityDTO;
   approvedEntities: CandidateEntityDTO[];
   busy: boolean;
-  onSave: (definition: string, businessMeaning: string, comment?: string) => void;
+  onSave: (name: string, definition: string, businessMeaning: string, comment?: string) => void;
   onApprove: (comment?: string) => void;
   onReject: (comment?: string) => void;
   onMerge: (targetId: string, comment?: string) => void;
 }) {
+  const [name, setName] = useState(entity.name);
   const [definition, setDefinition] = useState(entity.definition);
   const [businessMeaning, setBusinessMeaning] = useState(entity.business_meaning);
   const [comment, setComment] = useState("");
@@ -194,6 +195,11 @@ function EntityRow({
         <div className="metric-grid">
           <MetricTile label="Confidence" value={entity.confidence_score.toFixed(2)} />
         </div>
+
+        <label>
+          Name
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
 
         <label>
           Definition
@@ -238,7 +244,7 @@ function EntityRow({
         </label>
 
         <div className="review-item__actions">
-          <button type="button" disabled={busy} onClick={() => onSave(definition, businessMeaning, comment || undefined)}>
+          <button type="button" disabled={busy} onClick={() => onSave(name, definition, businessMeaning, comment || undefined)}>
             Save
           </button>
           <button type="button" disabled={busy} onClick={() => onApprove(comment || undefined)}>

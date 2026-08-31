@@ -1,0 +1,32 @@
+@prefix coa: <https://kg.local/ontology/domain/change_of_address#> .
+@prefix core: <https://kg.local/ontology/core#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# Worked example for the MYDET (Change of Address) corpus: a new domain
+# ships its own namespaced file that subclasses core.ttl's shared classes -
+# no edits to ontology.yaml or core.ttl required. Terms match the
+# domain_gazetteer entries already in ontology.yaml (COA, SAMM, IVR, TMW)
+# plus iForm, which the rule-based extractor can never reach on its own
+# (see ontology.yaml's DRAFT comment on entity_extractor._PHRASE_RE) but is
+# perfectly usable as an OWL class here.
+
+coa:ChangeOfAddressProcess a owl:Class ;
+    rdfs:subClassOf core:Process ;
+    rdfs:label "ChangeOfAddressProcess" .
+
+coa:SAMMPlatform a owl:Class ;
+    rdfs:subClassOf core:System ;
+    rdfs:label "SAMMPlatform" .
+
+coa:IVRChannel a owl:Class ;
+    rdfs:subClassOf core:Channel ;
+    rdfs:label "IVRChannel" .
+
+coa:IForm a owl:Class ;
+    rdfs:subClassOf core:Application ;
+    rdfs:label "IForm" .
+
+coa:TMWExternalPartner a owl:Class ;
+    rdfs:subClassOf core:ExternalPartner ;
+    rdfs:label "TMWExternalPartner" .

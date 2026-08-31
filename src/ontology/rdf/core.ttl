@@ -1,0 +1,178 @@
+@prefix core: <https://kg.local/ontology/core#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+core:API a owl:Class ;
+    rdfs:label "API" ;
+    skos:altLabel "api",
+        "endpoint",
+        "gateway" .
+
+core:APPLIES_TO a owl:ObjectProperty ;
+    rdfs:label "APPLIES_TO" ;
+    skos:altLabel "applies to",
+        "for accounts with",
+        "for customers with" .
+
+core:CONNECTS_TO a owl:ObjectProperty ;
+    rdfs:label "CONNECTS_TO" ;
+    skos:altLabel "communicates with",
+        "connects to",
+        "integrates with" .
+
+core:CONTAINS a owl:ObjectProperty ;
+    rdfs:label "CONTAINS" ;
+    skos:altLabel "comprises",
+        "contains",
+        "includes" .
+
+core:Check a owl:Class ;
+    rdfs:label "Check" ;
+    skos:altLabel "authentication",
+        "check",
+        "verification" .
+
+core:DEPENDS_ON a owl:ObjectProperty ;
+    rdfs:label "DEPENDS_ON" ;
+    skos:altLabel "depends on",
+        "is dependent on",
+        "requires" .
+
+core:Database a owl:Class ;
+    rdfs:label "Database" ;
+    skos:altLabel "database",
+        "datastore",
+        "db",
+        "store" .
+
+core:Document a owl:Class ;
+    rdfs:label "Document" .
+
+core:ESCALATES_TO a owl:ObjectProperty ;
+    rdfs:label "ESCALATES_TO" ;
+    rdfs:domain core:Channel ;
+    rdfs:range core:Team ;
+    skos:altLabel "escalate to",
+        "escalated to",
+        "hand over to",
+        "handover to",
+        "transfer to" .
+
+core:ExternalPartner a owl:Class ;
+    rdfs:label "ExternalPartner" ;
+    skos:altLabel "mail",
+        "office" .
+
+core:IMPLEMENTS a owl:ObjectProperty ;
+    rdfs:label "IMPLEMENTS" ;
+    skos:altLabel "adheres to",
+        "follows",
+        "implements" .
+
+core:OWNS a owl:ObjectProperty ;
+    rdfs:label "OWNS" ;
+    rdfs:domain core:Team ;
+    rdfs:range core:Application,
+        core:Service,
+        core:System ;
+    skos:altLabel "is responsible for",
+        "maintains",
+        "owns" .
+
+core:Party a owl:Class ;
+    rdfs:label "Party" ;
+    skos:altLabel "beneficiary",
+        "contact",
+        "donor" .
+
+core:Policy a owl:Class ;
+    rdfs:label "Policy" ;
+    skos:altLabel "compliance",
+        "guideline",
+        "policy",
+        "standard" .
+
+core:Process a owl:Class ;
+    rdfs:label "Process" ;
+    skos:altLabel "pipeline",
+        "process",
+        "workflow" .
+
+core:Product a owl:Class ;
+    rdfs:label "Product" ;
+    skos:altLabel "account",
+        "ctf",
+        "isa",
+        "jisa" .
+
+core:REFERENCES a owl:ObjectProperty ;
+    rdfs:label "REFERENCES" ;
+    skos:altLabel "cites",
+        "references",
+        "refers to" .
+
+core:REFERS_TO a owl:ObjectProperty ;
+    rdfs:label "REFERS_TO" ;
+    skos:altLabel "redirect to",
+        "redirected to",
+        "refer them to",
+        "refer to" .
+
+core:REQUIRES a owl:ObjectProperty ;
+    rdfs:label "REQUIRES" ;
+    skos:altLabel "must",
+        "need to",
+        "needs to" .
+
+core:Role a owl:Class ;
+    rdfs:label "Role" ;
+    skos:altLabel "adult",
+        "customer",
+        "holder" .
+
+core:Technology a owl:Class ;
+    rdfs:label "Technology" ;
+    skos:altLabel "framework",
+        "language",
+        "protocol" .
+
+core:Tool a owl:Class ;
+    rdfs:label "Tool" ;
+    skos:altLabel "finder" .
+
+core:USES a owl:ObjectProperty ;
+    rdfs:label "USES" ;
+    skos:altLabel "leverages",
+        "relies on",
+        "uses",
+        "utilizes" .
+
+core:Application a owl:Class ;
+    rdfs:label "Application" ;
+    skos:altLabel "app",
+        "application",
+        "platform",
+        "portal" .
+
+core:Channel a owl:Class ;
+    rdfs:label "Channel" ;
+    skos:altLabel "branch",
+        "ivr",
+        "telephony" .
+
+core:Service a owl:Class ;
+    rdfs:label "Service" ;
+    skos:altLabel "microservice",
+        "service" .
+
+core:System a owl:Class ;
+    rdfs:label "System" ;
+    skos:altLabel "system" .
+
+core:Team a owl:Class ;
+    rdfs:label "Team" ;
+    skos:altLabel "department",
+        "squad",
+        "team" .
+
