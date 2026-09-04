@@ -8,6 +8,11 @@ the LLM's recall for chunks the regex-based extractor structurally can't
 cover, while keeping the LLM's workload to a fraction of the corpus instead
 of every chunk.
 
+The rule-based leg defaults to OntologyRulesExtractionProvider (unchanged
+regex behavior); set extraction.options.hybrid.rules_backend: spacy_rules
+to swap in SpacyExtractionProvider instead - same ontology-driven types,
+better tokenization/sentence handling on varied unstructured text.
+
 Entities from both sources are merged by id (build_entity_id is shared
 between the rule-based and Ollama providers, so a real-world entity that
 both sides name identically collapses to one row; a name/type disagreement
@@ -24,6 +29,19 @@ from config.app_config import AppConfig
 from providers.extraction_provider import ExtractionProvider
 from providers.ollama_extraction_provider import OllamaExtractionProvider
 from providers.ontology_rules_extraction_provider import OntologyRulesExtractionProvider
+
+
+def _build_rules_provider(rules_backend: str) -> ExtractionProvider:
+    if rules_backend == "ontology_rules":
+        return OntologyRulesExtractionProvider()
+    if rules_backend == "spacy_rules":
+        from providers.spacy_extraction_provider import SpacyExtractionProvider
+
+        return SpacyExtractionProvider()
+    raise ValueError(
+        f"Unknown extraction.options.hybrid.rules_backend '{rules_backend}'. "
+        "Valid values: ontology_rules, spacy_rules."
+    )
 
 
 def _merge_entities(
@@ -48,7 +66,7 @@ class HybridExtractionProvider(ExtractionProvider):
     def __init__(self, config: AppConfig) -> None:
         options = config.extraction.options.get("hybrid", {})
         self.min_entities_per_chunk = int(options.get("min_entities_per_chunk", 1))
-        self._rules = OntologyRulesExtractionProvider()
+        self._rules = _build_rules_provider(options.get("rules_backend", "ontology_rules"))
         self._llm = OllamaExtractionProvider(config)
         self._fallback_chunk_ids: set[str] = set()
 

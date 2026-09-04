@@ -37,23 +37,27 @@ export default function AmbiguitySection() {
   if (!entities) return <p className="muted">Loading...</p>;
 
   return (
-    <section className="review-section">
-      <h2>Ambiguity Resolution</h2>
+    <details className="review-section">
+      <summary>
+        <h2>Ambiguity Resolution ({entities.length})</h2>
+      </summary>
 
-      {entities.length === 0 ? (
-        <EmptyState>No ambiguous entities to resolve.</EmptyState>
-      ) : (
-        entities.map((entity) => (
-          <AmbiguityRow
-            key={entity.id}
-            entity={entity}
-            busy={busyId === entity.id}
-            onConfirm={(chosen) => withBusy(entity.id, () => confirmAmbiguity(entity.id, chosen))}
-            onDismiss={() => withBusy(entity.id, () => dismissAmbiguity(entity.id))}
-          />
-        ))
-      )}
-    </section>
+      <div className="review-section__body">
+        {entities.length === 0 ? (
+          <EmptyState>No ambiguous entities to resolve.</EmptyState>
+        ) : (
+          entities.map((entity) => (
+            <AmbiguityRow
+              key={entity.id}
+              entity={entity}
+              busy={busyId === entity.id}
+              onConfirm={(chosen) => withBusy(entity.id, () => confirmAmbiguity(entity.id, chosen))}
+              onDismiss={() => withBusy(entity.id, () => dismissAmbiguity(entity.id))}
+            />
+          ))
+        )}
+      </div>
+    </details>
   );
 }
 

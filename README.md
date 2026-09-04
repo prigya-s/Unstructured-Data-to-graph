@@ -94,16 +94,17 @@ kg-local/
 │   ├── schemas.py                    # Pydantic request/response models
 │   ├── review_helpers.py              # now_iso/add_history/entity_display_name/etc.
 │   └── routers/                        # one router per domain (dashboard, entities,
-│                                          # relationships, ambiguity, candidate_graph,
-│                                          # production_graph, graph_diff, ontology,
-│                                          # publish, chat, health)
+│                                          # relationships, ambiguity, class_proposals,
+│                                          # candidate_graph, production_graph, graph_diff,
+│                                          # ontology, publish, chat, retrieval_trace, health)
 ├── web/                        # React + TypeScript frontend (Vite)
 │   ├── vite.config.ts             # dev-server proxy (/api/* -> api/main.py)
 │   └── src/
-│       ├── App.tsx                  # router + 7-page nav
+│       ├── App.tsx                  # router + 8-page nav
 │       ├── api/client.ts             # typed fetch wrappers, one per endpoint
 │       ├── pages/                     # Dashboard, Review, CandidateGraph,
-│       │                                # ProductionGraph, OntologyPreview, Publish, Chat
+│       │                                # ProductionGraph, OntologyPreview, Publish, Chat,
+│       │                                # RetrievalTrace
 │       └── components/                 # shared UI (MetricTile, HistoryLog, etc.)
 ├── src/
 │   ├── config/                  # AppConfig dataclass + load_config()
@@ -112,7 +113,7 @@ kg-local/
 │   │   ├── storage_provider.py / local_storage_provider.py / databricks_volumes_provider.py / unity_catalog_provider.py
 │   │   ├── document_source.py / local_folder_source.py / confluence_export_source.py / confluence_source.py (stub) / sharepoint_source.py (stub)
 │   │   ├── embedding_provider.py / local_embedding_provider.py (no-op) / ollama_embedding_provider.py / azure_openai_embedding_provider.py / databricks_embedding_provider.py
-│   │   ├── extraction_provider.py / ontology_rules_extraction_provider.py / ollama_extraction_provider.py / azure_openai_extraction_provider.py / hybrid_extraction_provider.py
+│   │   ├── extraction_provider.py / ontology_rules_extraction_provider.py / spacy_extraction_provider.py / ollama_extraction_provider.py / azure_openai_extraction_provider.py / hybrid_extraction_provider.py
 │   │   ├── llm_provider.py / ollama_llm_provider.py / azure_openai_llm_provider.py    # chat client for the GraphRAG agent
 │   │   ├── approval_provider.py           # re-exports review.repository.OntologyRepository
 │   │   ├── ontology_provider.py / local_ontology_provider.py
@@ -127,12 +128,14 @@ kg-local/
 │   ├── ontology/ontology.yaml                 # the 17 entity types + 11 relationship types, +domain_gazetteer (typed acronyms)
 │   ├── ontology/rdf/                           # NEW - OWL/Turtle generated core.ttl + hand-authored domain/*.ttl modules (opt-in, see docs/architecture/owl_turtle_ontology.md)
 │   ├── extraction/entity_extractor.py       # +domain_gazetteer lookups
+│   ├── extraction/spacy_entity_extractor.py  # deterministic spaCy-based matcher (tokenizer/sentencizer/EntityRuler), alt rules backend
 │   ├── extraction/relationship_extractor.py  # +REQUIRES/APPLIES_TO trigger-based relationship types
 │   ├── graph/graph_builder.py                 # +optional embedding passthrough on Chunk nodes, +page-link (LEADS_TO) extraction
 │   ├── graph/neo4j_loader.py                   # +vector index + search_chunks/get_mentioned_entities/get_neighbors/get_linked_documents, +CHILD_OF_PAGE/LEADS_TO structural edges, +uri/:Resource on Gold-tier nodes (neosemantics, see docs/architecture/neo4j_n10s_setup.md)
 │   ├── retrieval/                              # NEW - GraphRAG service layer
 │   │   ├── graphrag_service.py                   # retrieve_context() -> RetrievalResult, format_context_for_llm()
-│   │   └── query_cache.py                         # QueryCache - similarity-match cache of past (query, answer, RetrievalResult)
+│   │   ├── query_cache.py                         # QueryCache - similarity-match cache of past (query, answer, RetrievalResult)
+│   │   └── retrieval_trace_builder.py              # Cypher + connectivity + graph-snapshot logic behind the Retrieval Trace page
 │   ├── agents/                                 # NEW - Agent orchestration layer (Microsoft Agent Framework)
 │   │   └── graphrag_agent.py                     # GraphRAGAgent - retrieves context and calls the chat client directly (no tool-call turn), run()/run_stream()
 │   ├── review/                    # business review/approval workflow (see below) - UNCHANGED business logic
@@ -152,7 +155,8 @@ kg-local/
 │   ├── graph_governance.md        # Silver/Gold artifact map, diff algorithm, gating invariant
 │   ├── graphrag_retrieval.md      # retrieval/agent architecture, sequence diagram, implementation plan
 │   ├── entity_type_governance.md  # how repeat ingestion stays inside existing entity types (rules -> constrained LLM -> reviewed NO_FIT proposal)
-│   └── owl_turtle_ontology.md     # NEW - OWL/Turtle ontology-authoring layer (namespaces, core.ttl, domain modules, local_turtle provider)
+│   ├── owl_turtle_ontology.md     # NEW - OWL/Turtle ontology-authoring layer (namespaces, core.ttl, domain modules, local_turtle provider)
+│   └── cto_demo_script.md         # presenter script: unstructured docs -> graph -> retrieval, live ontology/approval/RDF/traversal walkthrough
 ├── requirements.txt
 ├── .env
 └── README.md
@@ -219,8 +223,16 @@ models the default config points at:
 ```powershell
 ollama pull bge-m3        # embedding.ollama.model
 ollama pull qwen3:14b      # extraction.ollama.model (hybrid extraction's LLM fallback)
-ollama pull llama3.2:3b    # llm.ollama.model (chat/GraphRAG agent)
 ```
+
+`llm.ollama.model` defaults to `gemma4:31b-cloud`, which runs on
+[Ollama's cloud infrastructure](https://ollama.com/) rather than this
+machine — the local Ollama daemon still fronts the request, but generation
+itself happens in the cloud, so there's nothing to `ollama pull` for it
+locally. It requires signing in once (`ollama signin`) and the model being
+available on your account. If you'd rather keep chat fully local/offline,
+point `llm.ollama.model` at a local model (e.g. `llama3.2:3b`) and
+`ollama pull` it the same way as the two models above.
 
 Ollama's own `base_url`/`model` come from `config.yaml` (`embedding.ollama`,
 `extraction.ollama`, `llm.ollama`), not `.env` — no `OLLAMA_*` environment
@@ -229,10 +241,12 @@ embedding vectors and hybrid (rule-based + AI-fallback) entity extraction out
 of the box, and `python src/main.py chat` / the **Ask the Knowledge Graph**
 page work without any Azure setup.
 
-`llm.ollama` also sets `num_thread` (how many CPU threads Ollama uses for
-chat), plus `temperature` and `seed` — pinned by default (`0.1` and `42`) so
-asking the same question against the same graph gives the same answer every
-time, instead of a slightly different phrasing on each run.
+`llm.ollama` also sets `temperature` and `seed` — pinned by default (`0.1`
+and `42`) so asking the same question against the same graph gives the same
+answer every time, instead of a slightly different phrasing on each run.
+(`num_thread`, which pinned CPU thread count for local generation, no longer
+applies now that the default model runs on Ollama's cloud infra — it's only
+relevant again if you swap back to a local `llm.ollama.model`.)
 
 **Azure OpenAI is a real, swap-in alternative**, not a fallback path. Set
 `ai.mode: azure` in `config.yaml` (or override `embedding.provider`/
@@ -260,8 +274,10 @@ future integration and currently isn't implemented yet — see
 
 All of the above is now also mirrored in `config.yaml` at the repo root:
 `embedding.provider` (`local_noop` | `ollama` | `azure_openai` |
-`databricks`), `extraction.provider` (`ontology_rules` | `ollama` |
-`azure_openai` | `hybrid`), `llm.provider` (`ollama` | `azure_openai`),
+`databricks`), `extraction.provider` (`ontology_rules` | `spacy_rules` |
+`ollama` | `azure_openai` | `hybrid`, with `hybrid.rules_backend`
+(`ontology_rules` | `spacy_rules`) choosing which deterministic provider runs
+as hybrid's rules-first leg), `llm.provider` (`ollama` | `azure_openai`),
 `ai.mode` (`local` | `azure`, a shortcut that fills in the three provider
 values above unless a section overrides it explicitly), `approval.provider`
 (`local` | `ontobricks`), `graph.provider` (`neo4j` | `neo4j_aura` |
@@ -356,17 +372,20 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. This is a plain-language business interface —
-no "Node", "Edge", "Cypher", or "Ontology Class" anywhere — with seven pages:
+no "Node", "Edge", "Cypher", or "Ontology Class" anywhere on any page except
+the debug-only Retrieval Trace page below — with eight pages:
 
 - **Dashboard** — documents processed, and candidate/approved/rejected counts
   for both entities and relationships.
-- **Review** — three sections on one page:
+- **Review** — four sections on one page:
   - **Entity Review** — Business Term, Suggested Definition, Confidence
     Score, Business Meaning, Evidence, Related Terms, Status, with
-    **Approve**, **Reject**, **Edit Definition**, and **Merge With Existing
-    Entity** actions, plus an **Approve all filtered** bulk action (behind a
-    confirmation checkbox) for approving everything currently pending in the
-    filtered view at once.
+    **Approve**, **Reject**, **Edit** (name, definition, and business
+    meaning are all editable — e.g. if a business approver wants to rename
+    a term before approving it), and **Merge With Existing Entity** actions,
+    plus an **Approve all filtered** bulk action (behind a confirmation
+    checkbox) for approving everything currently pending in the filtered
+    view at once.
   - **Relationship Review** — Source Term, Relationship, Target Term,
     Confidence, Evidence, with **Approve**/**Reject** actions. A
     relationship flagged with a domain/range warning (see step 6 above)
@@ -375,6 +394,13 @@ no "Node", "Edge", "Cypher", or "Ontology Class" anywhere — with seven pages:
   - **Ambiguity Resolution** — for terms with more than one possible meaning
     (e.g. "Bank" → *Financial Institution* vs *River Bank*), pick the
     correct interpretation for this organization.
+  - **Class Proposals** — concepts the AI model flagged as not fitting any
+    existing entity type (`NO_FIT`, see
+    [Entity Type Governance](docs/architecture/entity_type_governance.md)).
+    A reviewer can edit the suggested parent type and target domain file,
+    then **Approve & write to ontology** (adds a new subclass under an
+    existing type in a domain `.ttl` file — never a new root type, and
+    never an automatic change) or **Reject**.
 - **Candidate Graph** *(Silver)* — the draft graph, computed live from
   everything not yet rejected, plus **Graph Impact Analysis** (a summary of
   how the published graph would change if every pending item were approved)
@@ -392,6 +418,16 @@ no "Node", "Edge", "Cypher", or "Ontology Class" anywhere — with seven pages:
   ordinary prose (no chunk IDs, node/edge jargon, or Cypher) and ends with a
   **References** line naming the source documents it drew from. See
   [GraphRAG Retrieval Layer](#graphrag-retrieval-layer) below.
+- **Retrieval Trace** — a debug/demo page for inspecting retrieval behind a
+  chat answer; normally reached via "View retrieval trace" under that
+  answer's sources, and also in the sidebar nav. Shows the exact Cypher
+  query behind that answer's retrieval (paste it straight into Neo4j
+  Browser) plus an embedded graph snapshot of the chunks/entities/documents
+  actually traversed, styled to match Neo4j Browser's own default colors.
+  Traces are held in memory only and don't survive a backend restart (the
+  page 404s rather than showing stale data). See the "Retrieval Trace"
+  section of
+  [GraphRAG Retrieval Layer](docs/architecture/graphrag_retrieval.md).
 
 Every approve/reject/edit/merge action records who did it and when, and the
 full history is visible on each entity and relationship. Approving an entity
@@ -636,6 +672,15 @@ each one in plain terms, then explains how this project actually handles it.
 | **Constraints & domain rules** | The fixed list of entity/relationship types and business-specific matching rules that decide what gets pulled out at all. | `ontology.yaml` is the single source of truth: entity types (with keyword lists), relationship types (with trigger phrases), and a lookup table of acronyms (like `IVR`→`Channel`) are all read from this one file — nothing is hardcoded in Python. As a second, independent check, the Neo4j loader keeps its own allow-list of relationship types and silently drops anything not on it, plus uniqueness rules so the same document/chunk/entity can never be written twice. |
 | **Supersession** | When one record is replaced by another, the system needs to know which one is now the real one. | A duplicate entity is marked "merged" with a pointer to the entity it was merged into. Every place a graph gets built follows that pointer, so a merged entity's mentions and relationships always end up attributed to the entity that survived, never left pointing at the one that got merged away. Once merged, an entity is frozen the same way approved/rejected ones are — a later `ingest` run never brings it back. |
 | **Temporality** | Tracking not just what something is right now, but when it changed and what it looked like before. | Every approve/reject/edit/merge action is recorded with a timestamp, so an entity's full history — not just its current status — is always visible. Across runs, ingestion also compares this run's documents, entities, and relationships against the previous run and reports what was added, changed, or removed — so you always know what changed since last time, not just what exists now. |
+
+The chat threads and Retrieval Trace history behind "Ask the Knowledge
+Graph" are the one deliberate exception to durable state — both live only
+in the API process's memory (`api/routers/chat.py`'s `_threads` and
+`_retrieval_trace_history`), so a backend restart loses them. That's an
+accepted tradeoff for a debug/demo surface, not an idempotency gap: a
+lookup against a since-cleared thread/turn 404s explicitly rather than
+returning stale or corrupted data, and the frontend recovers by starting a
+fresh thread instead of erroring.
 
 ## Re-running
 

@@ -67,58 +67,62 @@ export default function RelationshipReviewSection() {
   if (!relationships) return <p className="muted">Loading...</p>;
 
   return (
-    <section className="review-section">
-      <h2>Relationship Review</h2>
+    <details className="review-section">
+      <summary>
+        <h2>Relationship Review ({relationships.length})</h2>
+      </summary>
 
-      <div className="filter-group">
-        <span className="filter-group__label">Status</span>
-        {ALL_STATUSES.map((status) => (
-          <label key={status} className="filter-checkbox">
-            <input
-              type="checkbox"
-              checked={statusFilter.has(status)}
-              onChange={() => toggle(statusFilter, setStatusFilter, status)}
-            />
-            {status}
-          </label>
-        ))}
-      </div>
-
-      <div className="filter-group">
-        <label className="filter-group__label" htmlFor="relationship-type-filter">
-          Relationship type
-        </label>
-        <select
-          id="relationship-type-filter"
-          multiple
-          value={Array.from(typeFilter)}
-          onChange={(e) => setTypeFilter(new Set(Array.from(e.target.selectedOptions).map((o) => o.value)))}
-        >
-          {types.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
+      <div className="review-section__body">
+        <div className="filter-group">
+          <span className="filter-group__label">Status</span>
+          {ALL_STATUSES.map((status) => (
+            <label key={status} className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={statusFilter.has(status)}
+                onChange={() => toggle(statusFilter, setStatusFilter, status)}
+              />
+              {status}
+            </label>
           ))}
-        </select>
-      </div>
+        </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState>No relationships match the current filters.</EmptyState>
-      ) : (
-        filtered.map((relationship) => (
-          <RelationshipRow
-            key={relationship.id}
-            relationship={relationship}
-            busy={busyId === relationship.id}
-            onSave={(relationshipType, comment) =>
-              withBusy(relationship.id, () => saveRelationship(relationship.id, relationshipType, comment))
-            }
-            onApprove={(comment) => withBusy(relationship.id, () => approveRelationship(relationship.id, comment))}
-            onReject={(comment) => withBusy(relationship.id, () => rejectRelationship(relationship.id, comment))}
-          />
-        ))
-      )}
-    </section>
+        <div className="filter-group">
+          <label className="filter-group__label" htmlFor="relationship-type-filter">
+            Relationship type
+          </label>
+          <select
+            id="relationship-type-filter"
+            multiple
+            value={Array.from(typeFilter)}
+            onChange={(e) => setTypeFilter(new Set(Array.from(e.target.selectedOptions).map((o) => o.value)))}
+          >
+            {types.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {filtered.length === 0 ? (
+          <EmptyState>No relationships match the current filters.</EmptyState>
+        ) : (
+          filtered.map((relationship) => (
+            <RelationshipRow
+              key={relationship.id}
+              relationship={relationship}
+              busy={busyId === relationship.id}
+              onSave={(relationshipType, comment) =>
+                withBusy(relationship.id, () => saveRelationship(relationship.id, relationshipType, comment))
+              }
+              onApprove={(comment) => withBusy(relationship.id, () => approveRelationship(relationship.id, comment))}
+              onReject={(comment) => withBusy(relationship.id, () => rejectRelationship(relationship.id, comment))}
+            />
+          ))
+        )}
+      </div>
+    </details>
   );
 }
 

@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import OntologyPreview from "./pages/OntologyPreview";
 import ProductionGraph from "./pages/ProductionGraph";
 import Publish from "./pages/Publish";
+import RetrievalTrace from "./pages/RetrievalTrace";
 import Review from "./pages/Review";
 
 // 7-page nav locked in 2026-08-20: Entity Review, Relationship Review, and
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { path: "/ontology-preview", label: "Ontology Preview" },
   { path: "/publish", label: "Publish" },
   { path: "/chat", label: "Ask the Knowledge Graph" },
+  { path: "/retrieval-trace", label: "Retrieval Trace" },
 ];
 
 export default function App() {
@@ -63,6 +65,7 @@ export default function App() {
           <Route path="/ontology-preview" element={<OntologyPreview />} />
           <Route path="/publish" element={<Publish />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/retrieval-trace" element={<RetrievalTrace />} />
         </Routes>
       </main>
     </div>

@@ -34,7 +34,7 @@ flowchart LR
         P4["LocalOntologyRepository / FutureOntoBricksRepository"]
         P5["LocalOntologyProvider"]
         P6["Neo4jGraphProvider / Neo4jAuraGraphProvider /\nMockGraphProvider / *stub*"]
-        P7["OntologyRulesExtractionProvider / OllamaExtractionProvider /\nAzureOpenAIExtractionProvider / HybridExtractionProvider"]
+        P7["OntologyRulesExtractionProvider / SpacyExtractionProvider /\nOllamaExtractionProvider / AzureOpenAIExtractionProvider /\nHybridExtractionProvider"]
         P8["OllamaLLMProvider / AzureOpenAILLMProvider"]
         P9["EnvSecretsProvider / *stub*"]
         P10["LocalAuthProvider / *stub*"]
@@ -109,11 +109,15 @@ flowchart LR
   `REQUIRES`/`APPLIES_TO` trigger matching are driven entirely by
   `ontology.yaml` content passed in as a plain
   dict by the Stage - no new config/env edge was added.
-- `HybridExtractionProvider` (`P7`) composes two other providers
-  (`OntologyRulesExtractionProvider` always first, an LLM provider as
-  fallback for low-yield chunks) but is itself still just a provider
-  selected by `extraction.provider: hybrid` - `S5`/`S6` call it exactly
-  like any other `ExtractionProvider`, with no extra inbound config edge.
+- `HybridExtractionProvider` (`P7`) composes two other providers (a
+  rules-first leg, an LLM provider as fallback for low-yield chunks) but is
+  itself still just a provider selected by `extraction.provider: hybrid` -
+  `S5`/`S6` call it exactly like any other `ExtractionProvider`, with no
+  extra inbound config edge. The rules-first leg is itself config-selected
+  via `extraction.options.hybrid.rules_backend: ontology_rules |
+  spacy_rules` (`_build_rules_provider()`), defaulting to
+  `OntologyRulesExtractionProvider` - this is one more config-driven branch
+  inside `P7`, not a new inbound edge from `CFG` to a new box.
 - `graph_builder.py`'s page-link (`LEADS_TO`) extraction reads only the
   `documents` list already passed into `build_graph()`/
   `build_candidate_graph()` by `S9`/`SCG` - no new inbound edge from

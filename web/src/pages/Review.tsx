@@ -15,11 +15,8 @@ export default function Review() {
       </div>
 
       <EntityReviewSection />
-      <hr className="section-divider" />
       <RelationshipReviewSection />
-      <hr className="section-divider" />
       <AmbiguitySection />
-      <hr className="section-divider" />
       <ClassProposalReviewSection />
     </div>
   );

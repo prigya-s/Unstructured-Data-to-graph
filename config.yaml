@@ -57,15 +57,21 @@ embedding:
 extraction:
   # Entity/relationship extraction backend - resolves to an
   # ExtractionProvider (see src/providers/extraction_provider.py).
-  provider: hybrid  # ontology_rules | ollama | azure_openai | hybrid
+  provider: hybrid  # ontology_rules | spacy_rules | ollama | azure_openai | hybrid
   # ontology_rules is the deterministic, offline default (unchanged
   # keyword-matching behavior driven by ontology.yaml) - no options needed.
-  # hybrid runs ontology_rules on every chunk first (fast, zero LLM cost)
+  # spacy_rules is an NLP-based alternative to ontology_rules - same 17
+  # entity types and same ontology.yaml gazetteers/keywords, matched through
+  # spaCy's tokenizer/sentence pipeline instead of a hand-rolled regex (no
+  # spaCy language model is downloaded) - see
+  # src/extraction/spacy_entity_extractor.py. No options needed.
+  # hybrid runs a rule-based pass on every chunk first (fast, zero LLM cost)
   # and only falls back to the ollama model below for chunks where the
   # rule-based pass found too few entities - see
   # src/providers/hybrid_extraction_provider.py.
   hybrid:
     min_entities_per_chunk: 1  # chunks with fewer rule-based entities than this fall back to the LLM
+    rules_backend: ontology_rules  # ontology_rules | spacy_rules - which rule-based leg runs first
   ollama:                    # only read when provider: ollama/hybrid (or ai.mode: local)
     base_url: http://localhost:11434
     model: qwen3:14b
@@ -143,8 +149,7 @@ llm:
     api_version: "2024-06-01"
   ollama:                     # only read when provider: ollama (or ai.mode: local)
     base_url: http://localhost:11434
-    model: llama3.2:3b  # swapped from llama3.1:8b - ~2.2x faster on this CPU-only machine with comparable grounded-answer quality (benchmarked against real retrieved context before switching)
-    num_thread: 12  # pin generation to all physical cores on this CPU-only dev machine (12 physical / 14 logical) - Ollama's own default heuristic under-uses them
+    model: gemma4:31b-cloud  # runs on Ollama's cloud infra via the local daemon, not this CPU - requires `ollama signin` once and the model pulled/available; no local thread pinning applies (num_thread removed), see agent_timeout_seconds below if cold-start latency needs headroom
     temperature: 0.1  # low but nonzero - near-deterministic wording for the same retrieved context, without the repetition/looping some models fall into at exactly 0
     seed: 42  # fixed seed so identical (prompt, context) pairs reproduce the same answer - makes QA/demo comparisons meaningful
 
@@ -163,7 +168,7 @@ ai:
 retrieval:
   # Tunables for the GraphRAG retrieval pipeline (src/retrieval/graphrag_service.py).
   # No provider switch - Neo4j-only today.
-  top_k_chunks: 8  # restored to 8 now that llama3.2:3b + num_thread=12 gives latency headroom; more source chunks means more complete answers
+  top_k_chunks: 8  # more source chunks means more complete answers - reassess this if switching llm.ollama.model to gemma4:31b-cloud changes the per-query latency budget (network round trip instead of local CPU generation)
   graph_expansion_hops: 1
   max_neighbors: 20
   page_link_hops: 2  # restored to 2 - more next_steps context for detailed answers, affordable now that the model swap freed up latency budget

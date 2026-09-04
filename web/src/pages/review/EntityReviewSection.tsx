@@ -95,68 +95,72 @@ export default function EntityReviewSection() {
   if (!entities) return <p className="muted">Loading...</p>;
 
   return (
-    <section className="review-section">
-      <h2>Entity Review</h2>
+    <details className="review-section">
+      <summary>
+        <h2>Entity Review ({entities.length})</h2>
+      </summary>
 
-      <div className="filter-group">
-        <span className="filter-group__label">Status</span>
-        {ALL_STATUSES.map((status) => (
-          <label key={status} className="filter-checkbox">
-            <input
-              type="checkbox"
-              checked={statusFilter.has(status)}
-              onChange={() => toggle(statusFilter, setStatusFilter, status)}
-            />
-            {status}
-          </label>
-        ))}
-      </div>
-
-      <div className="filter-group">
-        <label className="filter-group__label" htmlFor="entity-category-filter">
-          Category
-        </label>
-        <select
-          id="entity-category-filter"
-          multiple
-          value={Array.from(categoryFilter)}
-          onChange={(e) =>
-            setCategoryFilter(new Set(Array.from(e.target.selectedOptions).map((o) => o.value)))
-          }
-        >
-          {categories.map((category) => (
-            <option key={category} value={category}>
-              {category}
-            </option>
+      <div className="review-section__body">
+        <div className="filter-group">
+          <span className="filter-group__label">Status</span>
+          {ALL_STATUSES.map((status) => (
+            <label key={status} className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={statusFilter.has(status)}
+                onChange={() => toggle(statusFilter, setStatusFilter, status)}
+              />
+              {status}
+            </label>
           ))}
-        </select>
-      </div>
+        </div>
 
-      <div className="bulk-approve-panel">
-        <button type="button" onClick={handleBulkApprove} disabled={bulkApprovableIds.length === 0 || busyId === "__bulk__"}>
-          Approve all {bulkApprovableIds.length} filtered pending entities
-        </button>
-      </div>
-
-      {filtered.length === 0 ? (
-        <EmptyState>No entities match the current filters.</EmptyState>
-      ) : (
-        filtered.map((entity) => (
-          <EntityRow
-            key={entity.id}
-            entity={entity}
-            approvedEntities={approvedEntities}
-            busy={busyId === entity.id}
-            onSave={(name, definition, businessMeaning, comment) =>
-              withBusy(entity.id, () => saveEntity(entity.id, { name, definition, business_meaning: businessMeaning, comment }))
+        <div className="filter-group">
+          <label className="filter-group__label" htmlFor="entity-category-filter">
+            Category
+          </label>
+          <select
+            id="entity-category-filter"
+            multiple
+            value={Array.from(categoryFilter)}
+            onChange={(e) =>
+              setCategoryFilter(new Set(Array.from(e.target.selectedOptions).map((o) => o.value)))
             }
-            onApprove={(comment) => withBusy(entity.id, () => approveEntity(entity.id, comment))}
-            onReject={(comment) => withBusy(entity.id, () => rejectEntity(entity.id, comment))}
-            onMerge={(targetId, comment) => withBusy(entity.id, () => mergeEntity(entity.id, targetId, comment))}
-          />
-        ))
-      )}
-    </section>
+          >
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="bulk-approve-panel">
+          <button type="button" onClick={handleBulkApprove} disabled={bulkApprovableIds.length === 0 || busyId === "__bulk__"}>
+            Approve all {bulkApprovableIds.length} filtered pending entities
+          </button>
+        </div>
+
+        {filtered.length === 0 ? (
+          <EmptyState>No entities match the current filters.</EmptyState>
+        ) : (
+          filtered.map((entity) => (
+            <EntityRow
+              key={entity.id}
+              entity={entity}
+              approvedEntities={approvedEntities}
+              busy={busyId === entity.id}
+              onSave={(name, definition, businessMeaning, comment) =>
+                withBusy(entity.id, () => saveEntity(entity.id, { name, definition, business_meaning: businessMeaning, comment }))
+              }
+              onApprove={(comment) => withBusy(entity.id, () => approveEntity(entity.id, comment))}
+              onReject={(comment) => withBusy(entity.id, () => rejectEntity(entity.id, comment))}
+              onMerge={(targetId, comment) => withBusy(entity.id, () => mergeEntity(entity.id, targetId, comment))}
+            />
+          ))
+        )}
+      </div>
+    </details>
   );
 }
 

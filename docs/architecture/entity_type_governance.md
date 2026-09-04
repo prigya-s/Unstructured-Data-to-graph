@@ -56,8 +56,8 @@ Chunk text
      ontology and hierarchy unchanged until a reviewer acts
   -> Reviewer rejects --------------------------------------------- discarded, no change
   -> Reviewer approves -> near-duplicate-name guardrail, then a new
-     *subclass* (not a new root type) is appended under an existing
-     parent into a domain .ttl file
+     class (subclass of the suggested parent, or an audited orphan if no
+     parent is set) is appended into a domain .ttl file
 ```
 
 `extraction.provider: hybrid` (the default in `config.yaml`) runs the first
@@ -117,18 +117,25 @@ From there it's a normal review queue, `GET /api/class-proposals`
   the proposed name looks like a near-duplicate of a class that already
   exists (rename/reject instead of creating a look-alike). If it passes,
   `ontology.rdf.writer.append_class_to_domain()` writes a new `owl:Class`
-  that is a **subclass of the suggested (or edited) parent type**, into a
-  domain `.ttl` file (`target_domain`, defaulting to `extensions`) — not a
-  new root entity type, and not an edit to `ontology.yaml` itself. This is
-  the same core→domain extension mechanism documented in
-  [owl_turtle_ontology.md](owl_turtle_ontology.md).
+  into a domain `.ttl` file (`target_domain`, defaulting to `extensions`) —
+  not a new root entity type, and not an edit to `ontology.yaml` itself.
+  When a `suggested_parent` is set (the normal case), the new class is
+  written as its subclass. A reviewer can clear the parent field in the UI
+  before approving — that's a valid, audit-only outcome too: the class is
+  written as an orphan (no `rdfs:subClassOf` edge) rather than blocked, and
+  `check_orphan_classes()` is the audit signal for finding those later, not
+  a write-blocker. Approving a name that already exists in the target
+  domain file raises instead of duplicating it — the caller treats that as
+  already-done, not a hard failure. This is the same core→domain extension
+  mechanism documented in [owl_turtle_ontology.md](owl_turtle_ontology.md).
 
 ## Configuration reference
 
 | Key | Values | Effect |
 |---|---|---|
-| `extraction.provider` | `ontology_rules` \| `ollama` \| `azure_openai` \| `hybrid` | `ontology_rules`: deterministic only — zero chance of a class proposal, but a chunk with no keyword match yields no entities at all. `hybrid` (default): rules first, LLM only for low-yield chunks, NO_FIT possible but rare and always review-gated. `ollama`/`azure_openai` alone: every chunk goes through the LLM. |
-| `extraction.hybrid.min_entities_per_chunk` | integer, default `1` | Raising it sends more chunks to the LLM fallback (more recall, more chances for a NO_FIT proposal); lowering it (or using `ontology_rules`) keeps ingestion fully deterministic. |
+| `extraction.provider` | `ontology_rules` \| `spacy_rules` \| `ollama` \| `azure_openai` \| `hybrid` | `ontology_rules`/`spacy_rules`: deterministic only — zero chance of a class proposal, but a chunk with no keyword/pattern match yields no entities at all. `hybrid` (default): rules first, LLM only for low-yield chunks, NO_FIT possible but rare and always review-gated. `ollama`/`azure_openai` alone: every chunk goes through the LLM. |
+| `extraction.hybrid.min_entities_per_chunk` | integer, default `1` | Raising it sends more chunks to the LLM fallback (more recall, more chances for a NO_FIT proposal); lowering it (or using a rules-only provider) keeps ingestion fully deterministic. |
+| `extraction.hybrid.rules_backend` | `ontology_rules` (default) \| `spacy_rules` | Which deterministic provider runs as `hybrid`'s rules-first leg (`_build_rules_provider()` in `hybrid_extraction_provider.py`). Both match the same 17 entity types/gazetteers from `ontology.yaml`; `spacy_rules` matches via spaCy's tokenizer/sentencizer/EntityRuler (`spacy.blank("en")`, no pretrained language model downloaded) instead of hand-rolled regex — same governance guarantees either way, since neither can emit a class proposal. |
 
 ## Operational guidance for repeat ingestion
 
@@ -149,11 +156,13 @@ From there it's a normal review queue, `GET /api/class-proposals`
 
 - `src/extraction/entity_extractor.py` — deterministic keyword/gazetteer matcher
 - `src/providers/ontology_rules_extraction_provider.py` — `ExtractionProvider` wrapper around it
+- `src/extraction/spacy_entity_extractor.py` — deterministic spaCy-based matcher (tokenizer/sentencizer/EntityRuler, same 17 types/gazetteers, no pretrained model)
+- `src/providers/spacy_extraction_provider.py` — `ExtractionProvider` wrapper around it, selectable as `extraction.provider: spacy_rules` or `hybrid.rules_backend: spacy_rules`
 - `src/providers/ollama_extraction_provider.py` — LLM extraction + `NO_FIT` collection
-- `src/providers/hybrid_extraction_provider.py` — rules-first, LLM-fallback composition
+- `src/providers/hybrid_extraction_provider.py` — rules-first (backend config-selected), LLM-fallback composition
 - `src/prompts/entity_relationship_extraction.py` — the prompt enforcing "never invent a new type"
 - `src/review/candidate_builder.py` — `build_class_proposals()`
 - `src/review/models.py` — `ClassProposal`
 - `api/routers/class_proposals.py` — review endpoints (save/approve/reject)
 - `src/ontology/rdf/writer.py` — `append_class_to_domain()`
-- `src/ontology/rdf/guardrails.py` — `check_near_duplicate_labels()`
+- `src/ontology/rdf/guardrails.py` — `check_near_duplicate_labels()`, `check_orphan_classes()`

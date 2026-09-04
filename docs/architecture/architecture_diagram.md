@@ -35,7 +35,7 @@ flowchart TB
     subgraph GoldExtract["Gold: Extraction"]
         EE["EntityExtractionStage\n-> entity_extractor\n(+domain_gazetteer)"]
         RE["RelationshipExtractionStage\n-> relationship_extractor\n(+REQUIRES/APPLIES_TO)"]
-        HYB["hybrid extraction: ontology_rules first,\nollama (qwen3:14b) fallback for\nlow-yield chunks"]
+        HYB["hybrid extraction: rules-first leg\n(ontology_rules or spacy_rules,\nconfig-selected) then ollama\n(qwen3:14b) fallback for low-yield chunks"]
     end
 
     subgraph Review["Business Review & Approval"]
@@ -62,7 +62,7 @@ flowchart TB
     subgraph Retrieval["GraphRAG Retrieval / Agent Layer"]
         SVC["retrieval/graphrag_service.py\nembed query -> search_chunks ->\nget_mentioned_entities -> get_neighbors ->\nget_linked_documents (next steps)"]
         AGT["agents/graphrag_agent.py\nGraphRAGAgent: calls retrieve_context()\ndirectly, no tool-call turn; streamed\nrun_stream(), QueryCache short-circuit"]
-        LLM["● ollama (llama3.2:3b, default local)\n● azure_openai (real, alt)\n(LLMProvider)"]
+        LLM["● ollama (gemma4:31b-cloud, default,\nruns on Ollama cloud infra)\n● azure_openai (real, alt)\n(LLMProvider)"]
         CONV["Ask the Knowledge Graph\n(React page / `chat` CLI, both streamed)"]
     end
 
@@ -111,7 +111,12 @@ flowchart TB
   path, and the retrieval layer's `LLMProvider` each have two real (●)
   implementations today (Ollama and Azure OpenAI), not one real and one
   stub - `local_noop`/`ontology_rules`-only extraction remain available as
-  an explicit opt-in for fully offline runs.
+  an explicit opt-in for fully offline runs. The `HYB` box's rules-first leg
+  is itself provider-selected - `extraction.options.hybrid.rules_backend:
+  ontology_rules | spacy_rules` - both real, deterministic implementations
+  of the same 17 entity types/gazetteers (`OntologyRulesExtractionProvider`
+  vs. the spaCy-tokenizer-based `SpacyExtractionProvider`), not a real/stub
+  pair.
 - **Candidate Graph reaches Neo4j too**, but under `:CandidateEntity`/
   `:CANDIDATE_RELATIONSHIP` labels that the retrieval layer and Production
   Graph page never query - see [graph_governance.md](graph_governance.md)
@@ -136,3 +141,9 @@ flowchart TB
   same `build_production_graph()` write path already in the diagram, gated
   on a one-time manual plugin install, and changes no retrieval query - see
   [neo4j_n10s_setup.md](neo4j_n10s_setup.md).
+- **Also not shown**: the "Retrieval Trace" debug/demo page
+  (`/retrieval-trace`) sits entirely downstream of `CONV` - it replays the
+  same `SVC` retrieval outputs already captured for a given chat turn as
+  runnable Cypher plus a graph snapshot, adding no new box or control-flow
+  edge to this diagram. See the "Retrieval Trace" section of
+  [graphrag_retrieval.md](graphrag_retrieval.md).

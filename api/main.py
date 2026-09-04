@@ -42,6 +42,7 @@ from api.routers import (
     production_graph,
     publish,
     relationships,
+    retrieval_trace,
 )
 
 load_dotenv(_PROJECT_ROOT / ".env")
@@ -66,6 +67,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(chat.router)
+app.include_router(retrieval_trace.router)
 app.include_router(dashboard.router)
 app.include_router(entities.router)
 app.include_router(relationships.router)

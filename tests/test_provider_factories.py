@@ -36,6 +36,7 @@ from providers.hybrid_extraction_provider import HybridExtractionProvider
 from providers.ollama_extraction_provider import OllamaExtractionProvider
 from providers.ollama_llm_provider import OllamaLLMProvider
 from providers.ontology_rules_extraction_provider import OntologyRulesExtractionProvider
+from providers.spacy_extraction_provider import SpacyExtractionProvider
 from providers.secrets_provider import (
     AzureKeyVaultSecretsProvider,
     EnvSecretsProvider,
@@ -118,6 +119,11 @@ def test_extraction_provider_ontology_rules_default(tmp_path):
     assert isinstance(
         providers.get_extraction_provider(_config(tmp_path)), OntologyRulesExtractionProvider
     )
+
+
+def test_extraction_provider_spacy_rules(tmp_path):
+    config = _config(tmp_path, extraction=ExtractionConfig(provider="spacy_rules"))
+    assert isinstance(providers.get_extraction_provider(config), SpacyExtractionProvider)
 
 
 def test_extraction_provider_ollama(tmp_path):

@@ -11,6 +11,8 @@ import pytest
 
 from config.app_config import AppConfig, ExtractionConfig
 from providers.hybrid_extraction_provider import HybridExtractionProvider
+from providers.ontology_rules_extraction_provider import OntologyRulesExtractionProvider
+from providers.spacy_extraction_provider import SpacyExtractionProvider
 
 ONTOLOGY = {
     "entity_types": {"Person": {"keywords": ["engineer"]}, "System": {}},
@@ -170,3 +172,18 @@ def test_min_entities_per_chunk_is_configurable(monkeypatch):
 
     # only 1 rule-based entity found, threshold requires 2 -> falls back to the LLM too
     assert {(e["name"], e["type"]) for e in entities} == {("Lead Engineer", "Person")}
+
+
+def test_rules_backend_defaults_to_ontology_rules():
+    provider = HybridExtractionProvider(_config())
+    assert isinstance(provider._rules, OntologyRulesExtractionProvider)
+
+
+def test_rules_backend_can_be_swapped_to_spacy_rules():
+    provider = HybridExtractionProvider(_config(rules_backend="spacy_rules"))
+    assert isinstance(provider._rules, SpacyExtractionProvider)
+
+
+def test_rules_backend_unknown_raises():
+    with pytest.raises(ValueError):
+        HybridExtractionProvider(_config(rules_backend="bogus"))

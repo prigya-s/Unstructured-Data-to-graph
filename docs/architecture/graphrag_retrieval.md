@@ -51,7 +51,7 @@ implementation history.
 | Capability | ABC | Implementation | Factory |
 |---|---|---|---|
 | Real embeddings | `EmbeddingProvider` (existing) | `OllamaEmbeddingProvider` (default local, `bge-m3`) / `AzureOpenAIEmbeddingProvider` (alt) | `get_embedding_provider()`, `embedding.provider: ollama \| azure_openai` (or `ai.mode: local \| azure`) |
-| Chat completion | `LLMProvider` | `OllamaLLMProvider` (default local, `llama3.2:3b`) / `AzureOpenAILLMProvider` (alt) | `get_llm_provider()`, `llm.provider: ollama \| azure_openai` |
+| Chat completion | `LLMProvider` | `OllamaLLMProvider` (default, `gemma4:31b-cloud` via Ollama's cloud infra) / `AzureOpenAILLMProvider` (alt) | `get_llm_provider()`, `llm.provider: ollama \| azure_openai` |
 | Graph reads for retrieval | `GraphProvider` (14 methods total, including `search_chunks`/`get_mentioned_entities`/`get_neighbors`/`get_linked_documents`) | `Neo4jGraphProvider` / `Neo4jAuraGraphProvider` (subclasses it) / `MockGraphProvider` / `CosmosGraphProvider` (stub) | `get_graph_provider()` (unchanged) |
 
 `LLMProvider.get_chat_client()` returns a Microsoft Agent Framework
@@ -69,9 +69,12 @@ explicitly overrides it; `ai.mode: azure` resolves both to `azure_openai`.
 Azure secrets (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`) are resolved
 via the existing `SecretsProvider` abstraction, the same indirection
 `Neo4jGraphProvider` already uses - never hardcoded in `config.yaml`. Ollama
-needs no secrets at all - `base_url`/`model` are plain `config.yaml` values
-(`embedding.ollama`, `llm.ollama`), alongside `num_thread`, `temperature`,
-and `seed` (see "Determinism and CPU tuning" below).
+needs no API-key secret - `base_url`/`model` are plain `config.yaml` values
+(`embedding.ollama`, `llm.ollama`), alongside `temperature` and `seed` (see
+"Determinism and cloud execution" below). Since `llm.ollama.model` points at
+a `-cloud` model, the local Ollama daemon still fronts the request but the
+generation itself runs on Ollama's cloud infrastructure, which requires a
+one-time `ollama signin` on the host.
 
 ## Architecture diagram
 
@@ -226,21 +229,27 @@ it as a single chunk. This is enabled by default
 repeated/rephrased demo and QA questions return instantly instead of
 re-paying a full CPU-bound generation.
 
-## Determinism and CPU tuning (`config.yaml`'s `llm.ollama`)
+## Determinism and cloud execution (`config.yaml`'s `llm.ollama`)
 
-- `model: llama3.2:3b` - swapped from the original `llama3.1:8b` for ~2.2x
-  faster generation on this CPU-only machine, at comparable grounded-answer
-  quality (benchmarked against real retrieved context before switching).
-- `num_thread: 12` - pins Ollama's generation to all physical cores on this
-  dev machine; Ollama's own default heuristic under-uses them.
+- `model: gemma4:31b-cloud` - swapped from the original CPU-local
+  `llama3.2:3b` (itself swapped from `llama3.1:8b` for ~2.2x faster
+  generation on CPU-only hardware). The `-cloud` suffix routes generation to
+  Ollama's cloud infrastructure through the local Ollama daemon rather than
+  running the model on this machine's CPU - the daemon still needs to be
+  running locally, and the host needs a one-time `ollama signin` plus the
+  model pulled/available, but no local CPU/GPU capacity is spent on
+  generation.
+- `num_thread` no longer applies and has been removed from `config.yaml` -
+  it pinned Ollama's local generation to physical cores, which is
+  meaningless once generation happens on Ollama's cloud infra instead of
+  this machine.
 - `temperature: 0.1` and `seed: 42` - low-but-nonzero temperature (avoids
   the repetition/looping some models fall into at exactly 0) plus a fixed
   seed, so the same question against the same graph state and the same
   retrieved context reproduces the same answer - verified by running the
   same question twice against the live agent and diffing the two answers
-  byte-for-byte. `OllamaLLMProvider.get_chat_options()` passes all three
-  through as Ollama chat options; `AzureOpenAILLMProvider` does not use
-  them.
+  byte-for-byte. `OllamaLLMProvider.get_chat_options()` passes both through
+  as Ollama chat options; `AzureOpenAILLMProvider` does not use them.
 
 ## Gating invariant (extends the Silver/Gold separation)
 
@@ -301,6 +310,45 @@ end user, in the answer text or in the UI. Related entities, relationship
 paths, and next steps render in their own sections of the same expander,
 phrased as entity-relationship sentences (e.g. "Billing Service USES
 Payment Gateway") - never "Node", "Edge", "Cypher", or "Ontology Class".
+
+## Retrieval Trace (debug/demo view of retrieval)
+
+`web/src/pages/RetrievalTrace.tsx` (nav label "Retrieval Trace", route
+`/retrieval-trace`) shows, for any question already asked in "Ask the
+Knowledge Graph," the exact Cypher and graph traversal that produced its
+answer - useful for demoing that graph traversal surfaces context a
+vector-only search would miss, and for debugging a retrieval that looks
+wrong.
+
+- **Capture**: `api/routers/chat.py` keeps a second in-memory dict,
+  `_retrieval_trace_history: dict[str, list[RetrievalTraceEntry]]`, keyed by
+  `thread_id` alongside `_threads`. After each turn's `run_stream()` loop
+  completes, it appends a `RetrievalTraceEntry` (question, chunk/entity/
+  document IDs, and the `graph_expansion_hops`/`page_link_hops` values in
+  effect for that request); the turn's index in that list rides along as
+  `turn_index` in the "done" NDJSON frame, so `Chat.tsx`'s "View retrieval
+  trace" link can jump straight to that turn.
+- **Cypher + connectivity**: `src/retrieval/retrieval_trace_builder.py`
+  (pure functions, lifted from `demo_coa_vector_vs_graph.py`) builds a
+  fully-bound Cypher query runnable directly in Neo4j Browser
+  (`browser_query()`), a live union-find connectivity probe over the
+  retrieved chunks (`compute_connectivity()`, so disconnected islands are
+  reported honestly instead of hidden), and a deduped node/edge snapshot for
+  the in-app graph view (`graph_snapshot()`).
+- **Endpoints**: `api/routers/retrieval_trace.py` exposes
+  `GET /api/retrieval-trace/threads/{thread_id}/turns/{turn_index}` (counts,
+  both Cypher variants, connectivity summary) and the same path + `/graph`
+  (nodes/edges for the largest connected cluster). Both 404 if the
+  thread/turn isn't in `_retrieval_trace_history`.
+- **Persistence**: same in-memory, non-persisted lifecycle as `_threads` -
+  a backend restart invalidates prior traces, surfaced as a 404 on the
+  trace page rather than an error. This is a debug/demo feature, not a
+  production capability, so that tradeoff is accepted rather than backed by
+  real storage.
+- **Rendering**: the graph snapshot is styled to match Neo4j Browser's own
+  default per-label palette (Chunk/Document/Entity node colors, uniform grey
+  edges) via `react-force-graph-2d`, so it reads as the same graph rather
+  than a different tool's view of it.
 
 ## Implementation plan (as executed)
 
@@ -372,8 +420,11 @@ state:
   blocking until the full answer is ready.
 - **A `QueryCache` was added** (`src/retrieval/query_cache.py`) to short-
   circuit repeated/near-duplicate questions - see "Query cache" above.
-- **The default model, thread count, temperature, and seed were tuned** for
-  CPU-only latency and determinism - see "Determinism and CPU tuning" above.
+- **The default model, temperature, and seed were tuned** for latency and
+  determinism, first for CPU-only inference and then for cloud execution -
+  see "Determinism and cloud execution" above.
+- **A Retrieval Trace page was added** exposing the exact Cypher and graph
+  traversal behind any chat answer - see "Retrieval Trace" below.
 - **The answer format changed**: the LLM's main answer is now plain
   narrative prose with no chunk/document IDs, closing with a `References:`
   line of document titles only - see "Answer format and citations" above.

@@ -56,51 +56,56 @@ export default function ClassProposalReviewSection() {
   if (!proposals) return <p className="muted">Loading...</p>;
 
   return (
-    <section className="review-section">
-      <h2>Class Proposals</h2>
-      <p className="muted">
-        Concepts the extraction model flagged as not fitting any existing ontology class.
-        Approving one writes a new class into the target domain's <code>.ttl</code> file.
-      </p>
+    <details className="review-section">
+      <summary>
+        <h2>Class Proposals ({pending.length})</h2>
+      </summary>
 
-      {pending.length === 0 ? (
-        <EmptyState>No class proposals awaiting review.</EmptyState>
-      ) : (
-        pending.map((proposal) => (
-          <ClassProposalRow
-            key={proposal.id}
-            proposal={proposal}
-            busy={busyId === proposal.id}
-            onSave={(suggestedParent, targetDomain, comment) =>
-              withBusy(proposal.id, () =>
-                saveClassProposal(proposal.id, {
-                  suggested_parent: suggestedParent,
-                  target_domain: targetDomain,
-                  comment,
-                }),
-              )
-            }
-            onApprove={(comment) => withBusy(proposal.id, () => approveClassProposal(proposal.id, comment))}
-            onReject={(comment) => withBusy(proposal.id, () => rejectClassProposal(proposal.id, comment))}
-          />
-        ))
-      )}
+      <div className="review-section__body">
+        <p className="muted">
+          Concepts the extraction model flagged as not fitting any existing ontology class.
+          Approving one writes a new class into the target domain's <code>.ttl</code> file.
+        </p>
 
-      {decided.length > 0 && (
-        <details className="review-item">
-          <summary>{decided.length} decided proposal(s)</summary>
-          <div className="review-item__body">
-            {decided.map((proposal) => (
-              <div key={proposal.id} className="review-item">
-                <strong>{proposal.proposed_name}</strong> — {proposal.status}
-                {proposal.target_domain && <span className="muted"> ({proposal.target_domain}.ttl)</span>}
-                <HistoryLog history={proposal.history} />
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-    </section>
+        {pending.length === 0 ? (
+          <EmptyState>No class proposals awaiting review.</EmptyState>
+        ) : (
+          pending.map((proposal) => (
+            <ClassProposalRow
+              key={proposal.id}
+              proposal={proposal}
+              busy={busyId === proposal.id}
+              onSave={(suggestedParent, targetDomain, comment) =>
+                withBusy(proposal.id, () =>
+                  saveClassProposal(proposal.id, {
+                    suggested_parent: suggestedParent,
+                    target_domain: targetDomain,
+                    comment,
+                  }),
+                )
+              }
+              onApprove={(comment) => withBusy(proposal.id, () => approveClassProposal(proposal.id, comment))}
+              onReject={(comment) => withBusy(proposal.id, () => rejectClassProposal(proposal.id, comment))}
+            />
+          ))
+        )}
+
+        {decided.length > 0 && (
+          <details className="review-item">
+            <summary>{decided.length} decided proposal(s)</summary>
+            <div className="review-item__body">
+              {decided.map((proposal) => (
+                <div key={proposal.id} className="review-item">
+                  <strong>{proposal.proposed_name}</strong> — {proposal.status}
+                  {proposal.target_domain && <span className="muted"> ({proposal.target_domain}.ttl)</span>}
+                  <HistoryLog history={proposal.history} />
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+    </details>
   );
 }
 

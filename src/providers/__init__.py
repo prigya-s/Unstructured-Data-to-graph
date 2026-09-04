@@ -99,6 +99,10 @@ def get_extraction_provider(config: AppConfig) -> ExtractionProvider:
         from .ontology_rules_extraction_provider import OntologyRulesExtractionProvider
 
         return OntologyRulesExtractionProvider()
+    if provider == "spacy_rules":
+        from .spacy_extraction_provider import SpacyExtractionProvider
+
+        return SpacyExtractionProvider()
     if provider == "ollama":
         from .ollama_extraction_provider import OllamaExtractionProvider
 
@@ -112,7 +116,8 @@ def get_extraction_provider(config: AppConfig) -> ExtractionProvider:
 
         return HybridExtractionProvider(config)
     raise ValueError(
-        f"Unknown extraction.provider '{provider}'. Valid values: ontology_rules, ollama, azure_openai, hybrid."
+        f"Unknown extraction.provider '{provider}'. Valid values: ontology_rules, spacy_rules, "
+        "ollama, azure_openai, hybrid."
     )
 
 

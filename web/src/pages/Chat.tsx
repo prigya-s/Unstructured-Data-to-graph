@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { ChatStreamDone, createChatThread, sendChatMessageStream } from "../api/client";
 import MarkdownText from "../components/MarkdownText";
@@ -161,7 +162,9 @@ export default function Chat() {
                   message.content
                 )}
               </div>
-              {message.sources && <SourcesExpander sources={message.sources} />}
+              {message.sources && threadId && (
+                <SourcesExpander sources={message.sources} threadId={threadId} />
+              )}
             </div>
           );
         })}
@@ -186,7 +189,7 @@ export default function Chat() {
   );
 }
 
-function SourcesExpander({ sources }: { sources: ChatStreamDone }) {
+function SourcesExpander({ sources, threadId }: { sources: ChatStreamDone; threadId: string }) {
   const [open, setOpen] = useState(false);
   const hasSources =
     sources.citations.length > 0 || sources.entities.length > 0 || sources.graph_paths.length > 0;
@@ -194,9 +197,19 @@ function SourcesExpander({ sources }: { sources: ChatStreamDone }) {
 
   return (
     <div className="sources">
-      <button type="button" className="sources__toggle" onClick={() => setOpen((prev) => !prev)}>
-        {open ? "Hide sources" : "Show sources"}
-      </button>
+      <div className="sources__trace">
+        <button type="button" className="sources__toggle" onClick={() => setOpen((prev) => !prev)}>
+          {open ? "Hide sources" : "Show sources"}
+        </button>
+        {sources.turn_index !== undefined && (
+          <Link
+            className="sources__trace-link"
+            to={`/retrieval-trace?thread=${threadId}&turn=${sources.turn_index}`}
+          >
+            View retrieval trace
+          </Link>
+        )}
+      </div>
       {open && (
         <div className="sources__content">
           {sources.entities.length > 0 && (

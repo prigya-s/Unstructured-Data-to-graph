@@ -34,6 +34,7 @@ export interface NewThreadResponse {
 }
 
 export interface ChatStreamDone {
+  turn_index: number;
   citations: { chunk_id: string; document_id: string; document_name: string }[];
   entities: { entity_id: string; name: string; entity_type: string }[];
   graph_paths: string[];
@@ -394,4 +395,50 @@ export function publishGraph(): Promise<PublishJobResponse> {
 
 export function getPublishJob(jobId: string): Promise<PublishJobStatus> {
   return request<PublishJobStatus>(`/api/publish/jobs/${jobId}`);
+}
+
+export interface RetrievalTraceCluster {
+  chunk_count: number;
+  document_names: string[];
+}
+
+export interface RetrievalTraceTurnResponse {
+  question: string;
+  turn_index: number;
+  chunk_count: number;
+  entity_count: number;
+  document_count: number;
+  graph_expansion_hops: number;
+  page_link_hops: number;
+  cypher_full: string;
+  cypher_largest_cluster: string;
+  connectivity: {
+    cluster_count: number;
+    clusters: RetrievalTraceCluster[];
+  };
+}
+
+export function getRetrievalTraceTurn(threadId: string, turnIndex: number): Promise<RetrievalTraceTurnResponse> {
+  return request<RetrievalTraceTurnResponse>(`/api/retrieval-trace/threads/${threadId}/turns/${turnIndex}`);
+}
+
+export interface RetrievalTraceGraphNode {
+  id: string;
+  label: "Chunk" | "Document" | "Entity";
+  name: string;
+}
+
+export interface RetrievalTraceGraphEdge {
+  source: string;
+  target: string;
+  type: "HAS_CHUNK" | "MENTIONS" | "RELATED" | "LEADS_TO";
+}
+
+export interface RetrievalTraceGraphResponse {
+  nodes: RetrievalTraceGraphNode[];
+  edges: RetrievalTraceGraphEdge[];
+}
+
+export function getRetrievalTraceGraph(threadId: string, turnIndex: number): Promise<RetrievalTraceGraphResponse> {
+  return request<RetrievalTraceGraphResponse>(`/api/retrieval-trace/threads/${threadId}/turns/${turnIndex}/graph`);
 }

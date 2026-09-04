@@ -26,14 +26,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from api import deps
-from api.schemas import ChatMessageRequest, NewThreadResponse
+from api.schemas import ChatMessageRequest, NewThreadResponse, RetrievalTraceEntry
 from agents.graphrag_agent import GraphRAGAgent
+from config.app_config import AppConfig
 
 logger = logging.getLogger("kg_local.api.chat")
 
 router = APIRouter()
 
 _threads: dict[str, object] = {}
+
+# One RetrievalTraceEntry per turn, in the order turns were answered -
+# api/routers/retrieval_trace.py reads this to regenerate that turn's
+# Cypher/connectivity/snapshot on demand. Same in-memory, local-demo-only
+# lifecycle as _threads above.
+_retrieval_trace_history: dict[str, list[RetrievalTraceEntry]] = {}
 
 
 @router.post("/api/chat/threads", response_model=NewThreadResponse)
@@ -48,6 +55,7 @@ async def send_message(
     thread_id: str,
     body: ChatMessageRequest,
     agent: GraphRAGAgent = Depends(deps.get_agent),
+    config: AppConfig = Depends(deps.get_config),
 ) -> StreamingResponse:
     thread = _threads.get(thread_id)
     if thread is None:
@@ -75,9 +83,21 @@ async def send_message(
             return
 
         result = agent.last_result
+        turn_index = len(_retrieval_trace_history.get(thread_id, []))
+        _retrieval_trace_history.setdefault(thread_id, []).append(
+            RetrievalTraceEntry(
+                question=body.message,
+                chunk_ids=[chunk["chunk_id"] for chunk in result.chunks],
+                entity_ids=[entity["entity_id"] for entity in result.entities],
+                document_ids=list({chunk["document_id"] for chunk in result.chunks}),
+                graph_expansion_hops=config.retrieval.graph_expansion_hops,
+                page_link_hops=config.retrieval.page_link_hops,
+            )
+        )
         yield json.dumps(
             {
                 "type": "done",
+                "turn_index": turn_index,
                 "citations": result.citations,
                 "entities": result.entities,
                 "graph_paths": result.graph_paths,
