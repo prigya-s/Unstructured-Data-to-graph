@@ -86,25 +86,34 @@ class GraphRAGAgent:
         if len(message) > max_length:
             raise ValueError(f"Query exceeds the maximum allowed length of {max_length} characters.")
 
-    def _build_messages(self, message: str, thread: ChatThread | None) -> list[Message]:
-        result = retrieve_context(message, self._embedding_provider, self._graph_provider, self.config)
+    def _build_messages(
+        self, message: str, thread: ChatThread | None, requester_groups: list[str] | None
+    ) -> list[Message]:
+        result = retrieve_context(
+            message, self._embedding_provider, self._graph_provider, self.config, requester_groups
+        )
         self.last_result = result
         context_block = format_context_for_llm(result)
         history = thread.messages if thread is not None else []
         question = Message("user", [f"{context_block}\n\nQuestion: {message}"])
         return [Message("system", [INSTRUCTIONS]), *history, question]
 
-    async def run(self, message: str, thread: ChatThread | None = None):
+    async def run(
+        self,
+        message: str,
+        thread: ChatThread | None = None,
+        requester_groups: list[str] | None = None,
+    ):
         self.validate_message(message)
 
         query_vector = None
         if self._cache is not None:
-            hit, query_vector = self._cache.lookup(message)
+            hit, query_vector = self._cache.lookup(message, requester_groups)
             if hit is not None:
                 self.last_result = hit.result
                 return hit.answer
 
-        messages = self._build_messages(message, thread)
+        messages = self._build_messages(message, thread, requester_groups)
         response = await asyncio.wait_for(
             self._chat_client.get_response(messages=messages, stream=False, options=self._chat_options),
             timeout=self.config.retrieval.agent_timeout_seconds,
@@ -114,22 +123,27 @@ class GraphRAGAgent:
         if thread is not None:
             thread.extend(message, answer)
         if self._cache is not None and not self.last_result.is_empty:
-            self._cache.store(message, query_vector, answer, self.last_result)
+            self._cache.store(message, query_vector, answer, self.last_result, requester_groups)
 
         return answer
 
-    async def run_stream(self, message: str, thread: ChatThread | None = None) -> AsyncIterator[str]:
+    async def run_stream(
+        self,
+        message: str,
+        thread: ChatThread | None = None,
+        requester_groups: list[str] | None = None,
+    ) -> AsyncIterator[str]:
         self.validate_message(message)
 
         query_vector = None
         if self._cache is not None:
-            hit, query_vector = self._cache.lookup(message)
+            hit, query_vector = self._cache.lookup(message, requester_groups)
             if hit is not None:
                 self.last_result = hit.result
                 yield hit.answer
                 return
 
-        messages = self._build_messages(message, thread)
+        messages = self._build_messages(message, thread, requester_groups)
         stream = self._chat_client.get_response(messages=messages, stream=True, options=self._chat_options)
         aiter = stream.__aiter__()
         deadline = time.monotonic() + self.config.retrieval.agent_timeout_seconds
@@ -150,7 +164,7 @@ class GraphRAGAgent:
         if thread is not None:
             thread.extend(message, answer)
         if self._cache is not None and not self.last_result.is_empty:
-            self._cache.store(message, query_vector, answer, self.last_result)
+            self._cache.store(message, query_vector, answer, self.last_result, requester_groups)
 
 
 def build_agent(llm_provider, embedding_provider, graph_provider, config: AppConfig) -> GraphRAGAgent:

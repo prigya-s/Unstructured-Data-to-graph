@@ -1,0 +1,138 @@
+<mxfile host="app.diagrams.net" agent="claude-code">
+  <diagram id="kg-ontology-rdf-pipeline" name="Ontology, RDF &amp; Graph Ingestion">
+    <mxGraphModel dx="1675" dy="757" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1650" pageHeight="680" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;fontSize=20;fontStyle=1;align=left;verticalAlign=middle;fontColor=#1a1a1a;" value="Ontology, RDF/OWL &amp; Graph Ingestion -- How the Concepts Fit Together" vertex="1">
+          <mxGeometry height="30" width="900" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;fontSize=12;fontStyle=2;align=left;verticalAlign=middle;fontColor=#666666;" value="Agreed vocabulary (top)  -&gt;  every document, every time (left)  -&gt;  human sign-off, then published to the live graph (right)" vertex="1">
+          <mxGeometry height="20" width="900" x="40" y="52" as="geometry" />
+        </mxCell>
+        <mxCell id="band1" parent="1" style="text;html=1;fontSize=11;fontStyle=1;align=left;verticalAlign=middle;fontColor=#9a7b1f;" value="ONE-TIME SETUP -- ONLY WHEN THE BUSINESS VOCABULARY ITSELF CHANGES" vertex="1">
+          <mxGeometry height="20" width="560" x="280" y="84" as="geometry" />
+        </mxCell>
+        <mxCell id="T1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=13;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Business Vocabulary&#xa;(the Ontology: agreed concepts&#xa;&amp; relationship types)" vertex="1">
+          <mxGeometry height="90" width="230" x="280" y="114" as="geometry" />
+        </mxCell>
+        <mxCell id="T2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=13;fontStyle=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Formal OWL/RDF Model&#xa;(written as Turtle / .ttl files)" vertex="1">
+          <mxGeometry height="90" width="230" x="580" y="114" as="geometry" />
+        </mxCell>
+        <mxCell id="eT" edge="1" parent="1" source="T1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeWidth=2;endArrow=block;strokeColor=#9a7b1f;" target="T2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LT" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=center;verticalAlign=middle;fontColor=#5f5f5f;" value="translated into the OWL/RDF&#xa;industry-standard format" vertex="1">
+          <mxGeometry height="34" width="150" x="490" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="band2" parent="1" style="text;html=1;fontSize=11;fontStyle=1;align=left;verticalAlign=middle;fontColor=#3f6b3f;" value="AUTOMATIC -- RUNS FOR EVERY NEW&lt;div&gt;&amp;nbsp;OR CHANGED DOCUMENT&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="220" x="46" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="band3" parent="1" style="text;html=1;fontSize=11;fontStyle=1;align=left;verticalAlign=middle;fontColor=#9b5a1f;" value="HUMAN-GATED -- RUNS EVERY APPROVAL / PUBLISH CYCLE" vertex="1">
+          <mxGeometry height="20" width="480" x="850" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="N1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="New or Changed&#xa;Document" vertex="1">
+          <mxGeometry height="90" width="190" x="40" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="N2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Entity &amp; Relationship&#xa;Extraction&#xa;(reads only against the Ontology)" vertex="1">
+          <mxGeometry height="90" width="230" x="280" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="N3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Draft Knowledge&#xa;(Candidate Graph)" vertex="1">
+          <mxGeometry height="90" width="200" x="560" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="N4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=13;fontStyle=1;dashed=1;fillColor=#f5f5f5;strokeColor=#666666;" value="Human Review&#xa;&amp; Approval" vertex="1">
+          <mxGeometry height="90" width="180" x="850" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="N5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fontSize=13;fontStyle=1;fillColor=#ffe6cc;strokeColor=#d79b00;" value="Approved Ontology&#xa;(+ OWL/RDF export, optional)" vertex="1">
+          <mxGeometry height="90" width="230" x="1110" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="N6" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fontSize=13;fontStyle=1;fillColor=#d4e8e8;strokeColor=#3f8080;" value="Live Knowledge Graph&#xa;(Neo4j, RDF-ready)" vertex="1">
+          <mxGeometry height="110" width="180" x="1400" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="N1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;flowAnimation=1;dashed=1;strokeWidth=2;endArrow=block;strokeColor=#6c8ebf;" target="N2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="N2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;flowAnimation=1;dashed=1;strokeWidth=2;endArrow=block;strokeColor=#6c8ebf;" target="N3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="N3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeWidth=2;endArrow=block;strokeColor=#666666;" target="N4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="N4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;flowAnimation=1;dashed=1;strokeWidth=2;endArrow=block;strokeColor=#d79b00;" target="N5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="N5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;flowAnimation=1;dashed=1;strokeWidth=2;endArrow=block;strokeColor=#3f8080;" target="N6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eG1" edge="1" parent="1" source="T1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeWidth=1.5;endArrow=block;strokeColor=#9a7b1f;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="N2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eG2" edge="1" parent="1" source="T2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;strokeWidth=1.5;endArrow=block;strokeColor=#9a7b1f;exitX=0.7;exitY=1;entryX=0.3;entryY=0;" target="N5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="741" y="255" />
+              <mxPoint x="1179" y="255" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="L1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=center;verticalAlign=middle;fontColor=#404040;" value="every file, every ingestion run" vertex="1">
+          <mxGeometry height="18" width="200" x="40" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="L2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=center;verticalAlign=middle;fontColor=#404040;" value="only the agreed concept types --&#xa;never a new type on its own" vertex="1">
+          <mxGeometry height="34" width="230" x="280" y="398" as="geometry" />
+        </mxCell>
+        <mxCell id="L3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=center;verticalAlign=middle;fontColor=#404040;" value="queued, not yet trusted" vertex="1">
+          <mxGeometry height="18" width="180" x="560" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="L4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=center;verticalAlign=middle;fontColor=#404040;" value="a person approves, edits or rejects" vertex="1">
+          <mxGeometry height="18" width="220" x="850" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="L5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=center;verticalAlign=middle;fontColor=#404040;" value="published, and re-synced&#xa;on every republish" vertex="1">
+          <mxGeometry height="34" width="200" x="1150" y="398" as="geometry" />
+        </mxCell>
+        <mxCell id="LG1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=center;verticalAlign=middle;fontColor=#7a6018;" value="extraction may only use&#xa;concepts on this list" vertex="1">
+          <mxGeometry height="34" width="170" x="320" y="224" as="geometry" />
+        </mxCell>
+        <mxCell id="LG2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=center;verticalAlign=middle;fontColor=#7a6018;" value="same model, now carrying&#xa;approved, real-world facts" vertex="1">
+          <mxGeometry height="34" width="190" x="940" y="224" as="geometry" />
+        </mxCell>
+        <mxCell id="cLegend" connectable="0" parent="1" style="group" value="" vertex="1">
+          <mxGeometry height="190" width="720" x="900" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" parent="cLegend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;verticalAlign=top;align=left;fontSize=13;fontStyle=1;spacingLeft=14;spacingTop=8;" value="Legend" vertex="1">
+          <mxGeometry height="190" width="720" as="geometry" />
+        </mxCell>
+        <mxCell id="sw1" parent="cLegend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#6c8ebf;strokeColor=none;" value="" vertex="1">
+          <mxGeometry height="14" width="30" x="20" y="35" as="geometry" />
+        </mxCell>
+        <mxCell id="tx1" parent="cLegend" style="text;html=1;fontSize=12;align=left;verticalAlign=middle;" value="Automatic -- every document, every ingestion (iterative)" vertex="1">
+          <mxGeometry height="26" width="440" x="60" y="28" as="geometry" />
+        </mxCell>
+        <mxCell id="sw2" parent="cLegend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d79b00;strokeColor=none;" value="" vertex="1">
+          <mxGeometry height="14" width="30" x="20" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="tx2" parent="cLegend" style="text;html=1;fontSize=12;align=left;verticalAlign=middle;" value="Automatic -- every approval / publish cycle (iterative, human-gated)" vertex="1">
+          <mxGeometry height="26" width="440" x="60" y="58" as="geometry" />
+        </mxCell>
+        <mxCell id="sw3" parent="cLegend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#3f8080;strokeColor=none;" value="" vertex="1">
+          <mxGeometry height="14" width="30" x="20" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="tx3" parent="cLegend" style="text;html=1;fontSize=12;align=left;verticalAlign=middle;" value="Automatic -- loaded into the live graph on every publish (iterative)" vertex="1">
+          <mxGeometry height="26" width="440" x="60" y="88" as="geometry" />
+        </mxCell>
+        <mxCell id="sw4" parent="cLegend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;" value="" vertex="1">
+          <mxGeometry height="14" width="30" x="20" y="125" as="geometry" />
+        </mxCell>
+        <mxCell id="tx4" parent="cLegend" style="text;html=1;fontSize=12;align=left;verticalAlign=middle;" value="Manual -- a person decides (review, approve/reject)" vertex="1">
+          <mxGeometry height="26" width="440" x="60" y="118" as="geometry" />
+        </mxCell>
+        <mxCell id="sw5" parent="cLegend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="" vertex="1">
+          <mxGeometry height="14" width="30" x="20" y="155" as="geometry" />
+        </mxCell>
+        <mxCell id="tx5" parent="cLegend" style="text;html=1;fontSize=12;align=left;verticalAlign=middle;" value="One-time setup -- only redone when the vocabulary itself changes" vertex="1">
+          <mxGeometry height="26" width="440" x="60" y="148" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

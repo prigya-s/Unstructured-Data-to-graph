@@ -106,6 +106,17 @@ class AiConfig:
 
 
 @dataclass
+class PermissionsConfig:
+    """Document-level access control. Confluence documents carry their own
+    `allowed_groups` (mirrored from the source's page/space restrictions -
+    see ConfluenceExportSource); local_folder has no native ACL concept, so
+    every document it produces is tagged with this single default group
+    rather than left unrestricted."""
+
+    local_folder_default_group: str = "internal"
+
+
+@dataclass
 class RetrievalConfig:
     """Tunables for src/retrieval/graphrag_service.py. Not a provider
     section (no swappable backend today - Neo4j-only) so it has no
@@ -138,6 +149,7 @@ class AppConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     ai: AiConfig = field(default_factory=AiConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
+    permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
 
     @property
     def storage_root(self) -> Path:
@@ -218,6 +230,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     llm_provider = llm_explicit_provider or mode_default_provider or "azure_openai"
 
     retrieval_raw = dict(raw.get("retrieval") or {})
+    permissions_raw = dict(raw.get("permissions") or {})
 
     return AppConfig(
         environment=raw.get("environment", "local"),
@@ -238,4 +251,5 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         llm=LLMConfig(provider=llm_provider, options=llm_raw),
         ai=AiConfig(mode=ai_mode),
         retrieval=RetrievalConfig(**retrieval_raw),
+        permissions=PermissionsConfig(**permissions_raw),
     )

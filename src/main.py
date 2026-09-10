@@ -25,6 +25,7 @@ import logging
 import re
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -54,6 +55,7 @@ from pipeline.stages.ingestion_stage import IngestionStage  # noqa: E402
 from pipeline.stages.ontology_stage import OntologyStage  # noqa: E402
 from pipeline.stages.relationship_extraction_stage import RelationshipExtractionStage  # noqa: E402
 from ontology.rdf.graph_loader import enrich_ontology_with_rdf  # noqa: E402
+from review.models import HistoryEntry, WorkflowStatus  # noqa: E402
 
 logger = logging.getLogger("kg_local")
 
@@ -61,6 +63,10 @@ logger = logging.getLogger("kg_local")
 # pages legitimately don't match this - it's a data-quality signal to review,
 # not a hard error.
 _SOP_ID_SUFFIX_RE = re.compile(r"Q\d+$")
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def load_ontology(config: AppConfig) -> dict:
@@ -144,6 +150,52 @@ def _find_orphan_document_ids(documents: list[dict], structural_graph: dict) -> 
     return {doc["document_id"] for doc in documents} - connected
 
 
+def _update_orphaned_by_edit_flags(
+    repository, entities_lost: set, current_entity_ids: set
+) -> tuple[int, int]:
+    """Flags each APPROVED candidate entity whose id is in `entities_lost`
+    (no mention anywhere in the current corpus - see A4 of
+    composed-gliding-gem.md) as orphaned_by_edit, and clears the flag on any
+    previously-flagged entity that's mentioned again in `current_entity_ids`.
+    PENDING_REVIEW/NEW/REJECTED/MERGED rows are left alone: build_candidates()
+    already refreshes or ignores those on its own, and only a human-approved
+    decision that's since lost its evidence needs a review flag - never an
+    automated deletion. Returns (flagged, cleared) counts for the diff report."""
+    flagged = 0
+    cleared = 0
+    to_save = []
+    for entity in repository.get_candidate_entities():
+        if entity.status != WorkflowStatus.APPROVED:
+            continue
+        if entity.id in entities_lost and not entity.orphaned_by_edit:
+            entity.orphaned_by_edit = True
+            entity.history.append(
+                HistoryEntry(
+                    timestamp=_now_iso(),
+                    reviewer="pipeline",
+                    action="flag",
+                    comment="No remaining supporting evidence in this ingestion run - source document(s) may have been edited or removed.",
+                )
+            )
+            to_save.append(entity)
+            flagged += 1
+        elif entity.id in current_entity_ids and entity.orphaned_by_edit:
+            entity.orphaned_by_edit = False
+            entity.history.append(
+                HistoryEntry(
+                    timestamp=_now_iso(),
+                    reviewer="pipeline",
+                    action="unflag",
+                    comment="Supporting evidence found again in this ingestion run.",
+                )
+            )
+            to_save.append(entity)
+            cleared += 1
+    if to_save:
+        repository.save_candidate_entities(to_save)
+    return flagged, cleared
+
+
 def _log_ingestion_diff_report(previous: dict, ctx: PipelineContext) -> None:
     documents = ctx.markdown_documents
     structural_graph = graph_builder.build_graph(
@@ -163,6 +215,9 @@ def _log_ingestion_diff_report(previous: dict, ctx: PipelineContext) -> None:
     current_entity_ids = {entity["id"] for entity in ctx.entities}
     entities_gained = current_entity_ids - previous["entity_ids"]
     entities_lost = previous["entity_ids"] - current_entity_ids
+    entities_flagged, entities_unflagged = _update_orphaned_by_edit_flags(
+        ctx.approval_provider, entities_lost, current_entity_ids
+    )
 
     current_relationship_keys = {
         (rel["source"], rel["relationship"], rel["target"]) for rel in ctx.relationships
@@ -180,11 +235,13 @@ def _log_ingestion_diff_report(previous: dict, ctx: PipelineContext) -> None:
 
     logger.info(
         "Ingestion diff: pages +%d/-%d/~%d, entities +%d/-%d, relationships +%d/-%d, "
-        "missing_sop_suffix=%d, orphan_documents=%d",
+        "missing_sop_suffix=%d, orphan_documents=%d, approved_entities_flagged_orphaned=%d, "
+        "approved_entities_unflagged=%d",
         len(added), len(removed), len(changed),
         len(entities_gained), len(entities_lost),
         len(relationships_gained), len(relationships_lost),
         len(missing_sop_suffix), len(orphan_names),
+        entities_flagged, entities_unflagged,
     )
     logger.info("Pages missing SOP-id suffix: %s", missing_sop_suffix)
     logger.info("Orphan pages: %s", orphan_names)
@@ -204,6 +261,8 @@ def _log_ingestion_diff_report(previous: dict, ctx: PipelineContext) -> None:
     print(f"Entities lost:                {len(entities_lost)}")
     print(f"Relationships gained:         {len(relationships_gained)}")
     print(f"Relationships lost:           {len(relationships_lost)}")
+    print(f"Approved entities newly flagged 'orphaned by edit': {entities_flagged}")
+    print(f"Approved entities un-flagged (evidence found again): {entities_unflagged}")
     print("\nData quality signals:")
     _print_list("Pages missing a SOP-id suffix (e.g. 'Q42')", missing_sop_suffix)
     _print_list("Orphan pages (no page-tree or in-text link in/out)", orphan_names)

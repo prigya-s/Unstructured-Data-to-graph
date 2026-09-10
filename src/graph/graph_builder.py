@@ -78,7 +78,8 @@ def build_graph(
     mentions: list[dict],
     relationships: list[dict],
 ) -> dict:
-    """documents: [{"document_id","document_name","source_path","markdown_path"}]
+    """documents: [{"document_id","document_name","source_path","markdown_path",
+              "allowed_groups" (optional, list[str] | None)}]
     chunks: [{"chunk_id","document","section_path","content","token_count",
               "embedding" (optional, list[float] | None)}]
     entities: [{"id","name","type","source_chunk"}]
@@ -95,6 +96,7 @@ def build_graph(
             "version": doc.get("version"),
             "content_hash": doc.get("content_hash"),
             "parent_page_id": doc.get("parent_page_id"),
+            "allowed_groups": doc.get("allowed_groups"),
         }
         for doc in documents
     ]

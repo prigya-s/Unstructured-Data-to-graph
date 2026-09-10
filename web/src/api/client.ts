@@ -221,6 +221,7 @@ export interface CandidateEntityDTO {
   reviewer: string | null;
   review_timestamp: string | null;
   merged_into: string | null;
+  orphaned_by_edit: boolean;
 }
 
 export interface CandidateRelationshipDTO {

@@ -63,6 +63,13 @@ class CandidateEntity:
     reviewer: str | None = None
     review_timestamp: str | None = None
     merged_into: str | None = None
+    orphaned_by_edit: bool = False
+    """Set by src/main.py's ingestion diff report when this entity (typically
+    APPROVED) no longer has any mention anywhere in the current corpus - a
+    source document was edited/removed such that its only supporting
+    evidence disappeared. Never auto-cleared to a deletion; a human decides
+    retire vs. keep via the existing approve/reject workflow. Cleared back to
+    False if the entity is mentioned again on a later ingestion run."""
 
     def to_dict(self) -> dict:
         return {
@@ -81,6 +88,7 @@ class CandidateEntity:
             "reviewer": self.reviewer,
             "review_timestamp": self.review_timestamp,
             "merged_into": self.merged_into,
+            "orphaned_by_edit": self.orphaned_by_edit,
         }
 
     @classmethod
@@ -101,6 +109,7 @@ class CandidateEntity:
             reviewer=d.get("reviewer"),
             review_timestamp=d.get("review_timestamp"),
             merged_into=d.get("merged_into"),
+            orphaned_by_edit=bool(d.get("orphaned_by_edit", False)),
         )
 
 

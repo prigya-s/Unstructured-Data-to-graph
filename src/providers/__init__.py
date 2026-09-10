@@ -48,7 +48,7 @@ def get_document_source(config: AppConfig) -> DocumentSource:
         from .local_folder_source import LocalFolderSource
 
         path = config.document_source.options.get("local_folder", {}).get("path", "./docs")
-        return LocalFolderSource(path)
+        return LocalFolderSource(path, default_group=config.permissions.local_folder_default_group)
     if provider == "confluence":
         from .confluence_source import ConfluenceSource
 

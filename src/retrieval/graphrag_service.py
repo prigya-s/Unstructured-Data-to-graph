@@ -57,10 +57,17 @@ def retrieve_context(
     embedding_provider,
     graph_provider,
     config: AppConfig,
+    requester_groups: list[str] | None = None,
 ) -> RetrievalResult:
+    """requester_groups: the requester's group membership, enforced against
+    every Document's allowed_groups (see Neo4jLoader.search_chunks/
+    get_neighbors/get_linked_documents). None means unfiltered - only safe
+    for internal/administrative callers, never for an end-user chat request."""
     query_vector = embed_query(embedding_provider, query)
 
-    chunks = graph_provider.search_chunks(query_vector, config.retrieval.top_k_chunks)
+    chunks = graph_provider.search_chunks(
+        query_vector, config.retrieval.top_k_chunks, requester_groups
+    )
     if not chunks:
         return RetrievalResult()
 
@@ -71,7 +78,10 @@ def retrieve_context(
     if entities:
         entity_ids = [entity["entity_id"] for entity in entities]
         neighbors = graph_provider.get_neighbors(
-            entity_ids, config.retrieval.graph_expansion_hops, config.retrieval.max_neighbors
+            entity_ids,
+            config.retrieval.graph_expansion_hops,
+            config.retrieval.max_neighbors,
+            requester_groups,
         )
         entities = entities + neighbors["entities"]
         graph_paths = [_format_path(path) for path in neighbors["paths"]]
@@ -87,7 +97,10 @@ def retrieve_context(
 
     document_ids = list({chunk["document_id"] for chunk in chunks})
     linked = graph_provider.get_linked_documents(
-        document_ids, config.retrieval.page_link_hops, config.retrieval.max_neighbors
+        document_ids,
+        config.retrieval.page_link_hops,
+        config.retrieval.max_neighbors,
+        requester_groups,
     )
     next_steps = [_format_next_step(path) for path in linked["paths"]]
 

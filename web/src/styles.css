@@ -274,6 +274,21 @@ blockquote {
   color: #6b4e05;
 }
 
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  margin-left: 0.4rem;
+}
+
+.badge--warning {
+  background: #fff4dd;
+  border: 1px solid #e8c468;
+  color: #6b4e05;
+}
+
 .metric-grid {
   display: flex;
   flex-wrap: wrap;

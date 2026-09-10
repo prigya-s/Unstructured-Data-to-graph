@@ -114,14 +114,17 @@ class _FakeNeo4jLoader:
     def query_graph(self, cypher, params=None):
         return []
 
-    def search_chunks(self, session, query_vector, top_k):
+    def search_chunks(self, session, query_vector, top_k, requester_groups=None):
         return []
 
     def get_mentioned_entities(self, session, chunk_ids):
         return []
 
-    def get_neighbors(self, session, entity_ids, hops, limit):
+    def get_neighbors(self, session, entity_ids, hops, limit, requester_groups=None):
         return {"entities": [], "paths": []}
+
+    def get_linked_documents(self, session, document_ids, hops, limit, requester_groups=None):
+        return {"documents": [], "paths": []}
 
     def close(self):
         self.closed = True

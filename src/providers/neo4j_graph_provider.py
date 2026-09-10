@@ -112,22 +112,28 @@ class Neo4jGraphProvider(GraphProvider):
             self._loader.close()
             self._loader = None
 
-    def search_chunks(self, query_vector: list[float], top_k: int) -> list[dict]:
+    def search_chunks(
+        self, query_vector: list[float], top_k: int, requester_groups: list[str] | None = None
+    ) -> list[dict]:
         loader = self._get_loader()
         with loader._driver.session(database=loader.database) as session:
-            return loader.search_chunks(session, query_vector, top_k)
+            return loader.search_chunks(session, query_vector, top_k, requester_groups)
 
     def get_mentioned_entities(self, chunk_ids: list[str]) -> list[dict]:
         loader = self._get_loader()
         with loader._driver.session(database=loader.database) as session:
             return loader.get_mentioned_entities(session, chunk_ids)
 
-    def get_neighbors(self, entity_ids: list[str], hops: int, limit: int) -> dict:
+    def get_neighbors(
+        self, entity_ids: list[str], hops: int, limit: int, requester_groups: list[str] | None = None
+    ) -> dict:
         loader = self._get_loader()
         with loader._driver.session(database=loader.database) as session:
-            return loader.get_neighbors(session, entity_ids, hops, limit)
+            return loader.get_neighbors(session, entity_ids, hops, limit, requester_groups)
 
-    def get_linked_documents(self, document_ids: list[str], hops: int, limit: int) -> dict:
+    def get_linked_documents(
+        self, document_ids: list[str], hops: int, limit: int, requester_groups: list[str] | None = None
+    ) -> dict:
         loader = self._get_loader()
         with loader._driver.session(database=loader.database) as session:
-            return loader.get_linked_documents(session, document_ids, hops, limit)
+            return loader.get_linked_documents(session, document_ids, hops, limit, requester_groups)

@@ -135,6 +135,13 @@ secrets:
 auth:
   provider: local  # local | azure_ad
 
+permissions:
+  # Document-level access control. Confluence documents mirror their own
+  # page/space restriction groups (see ConfluenceExportSource); local_folder
+  # has no native ACL concept, so every document it produces is tagged with
+  # this one default group instead of defaulting to unrestricted.
+  local_folder_default_group: internal
+
 observability:
   log_dir: ./logs
 

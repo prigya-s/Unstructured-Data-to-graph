@@ -83,32 +83,56 @@ class GraphProvider(ABC):
         Gold layer. Returns a stats dict of nodes/relationships loaded."""
 
     @abstractmethod
-    def search_chunks(self, query_vector: list[float], top_k: int) -> list[dict]:
+    def search_chunks(
+        self, query_vector: list[float], top_k: int, requester_groups: list[str] | None = None
+    ) -> list[dict]:
         """Vector-similarity search over Chunk embeddings. Returns dicts with
         chunk_id, content, document_id, document_name, score, ordered by
-        descending score."""
+        descending score.
+
+        requester_groups: when given, a chunk is only returned if its
+        Document's allowed_groups is unset or overlaps requester_groups.
+        None means unfiltered (internal/administrative use only - every
+        end-user-facing retrieval call must pass a concrete list, even an
+        empty one)."""
 
     @abstractmethod
     def get_mentioned_entities(self, chunk_ids: list[str]) -> list[dict]:
         """Entities mentioned by the given chunks. Returns dicts with
-        entity_id, name, entity_type."""
+        entity_id, name, entity_type. No requester_groups parameter - callers
+        are expected to have already filtered chunk_ids (see search_chunks),
+        so the permission filter is inherited transitively."""
 
     @abstractmethod
-    def get_neighbors(self, entity_ids: list[str], hops: int, limit: int) -> dict:
+    def get_neighbors(
+        self, entity_ids: list[str], hops: int, limit: int, requester_groups: list[str] | None = None
+    ) -> dict:
         """Entities reachable from entity_ids within `hops` relationship
         traversals (approved graph only). Returns {"entities": [...],
         "paths": [...]} where each path describes the hop chain
         (source name, relationship type, target name per hop) for citation
-        rendering."""
+        rendering.
+
+        requester_groups: when given, a neighbor is only included if it has
+        at least one MENTIONS edge from a chunk whose Document passes the
+        same allowed_groups check as search_chunks - an entity reachable only
+        through restricted evidence is excluded even though the graph edge
+        exists. None means unfiltered."""
 
     @abstractmethod
-    def get_linked_documents(self, document_ids: list[str], hops: int, limit: int) -> dict:
+    def get_linked_documents(
+        self, document_ids: list[str], hops: int, limit: int, requester_groups: list[str] | None = None
+    ) -> dict:
         """Documents reachable from document_ids within `hops` LEADS_TO
         traversals - the Document-level, forward-only counterpart to
         get_neighbors (decision-tree "what happens next", not entity
         relationships). Returns {"documents": [...], "paths": [...]} where
         each path carries the answer_label(s) along the hop chain, for
-        rendering a "next steps" section."""
+        rendering a "next steps" section.
+
+        requester_groups: when given, a target document is only included if
+        its own allowed_groups is unset or overlaps requester_groups. None
+        means unfiltered."""
 
     @abstractmethod
     def query_graph(self, cypher: str, params: dict | None = None) -> list[dict]:

@@ -8,6 +8,7 @@ list/table blocks intact (never split mid-block).
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 
@@ -136,25 +137,23 @@ def _parse_sections(markdown: str) -> list[_Section]:
     return [s for s in sections if any(b.strip() for b in s.blocks)]
 
 
-def _blocks_to_chunks(document_id: str, section_path: str, blocks: list[str], start_index: int):
+def _blocks_to_chunks(document_id: str, section_path: str, blocks: list[str]):
     """Greedily pack blocks into MIN..MAX token chunks with token overlap
     carried forward from the tail of the previous chunk."""
     chunks = []
     current_blocks: list[str] = []
     current_tokens = 0
-    index = start_index
 
     def make_chunk(block_list: list[str]) -> dict:
-        nonlocal index
         content = "\n\n".join(block_list).strip()
+        content_digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
         chunk = {
-            "chunk_id": f"{document_id}_chunk_{index:04d}",
+            "chunk_id": f"{document_id}_chunk_{content_digest}",
             "document": document_id,
             "section_path": section_path,
             "content": content,
             "token_count": count_tokens(content),
         }
-        index += 1
         return chunk
 
     def overlap_tail(block_list: list[str]) -> list[str]:
@@ -187,24 +186,24 @@ def _blocks_to_chunks(document_id: str, section_path: str, blocks: list[str], st
     if current_blocks:
         chunks.append(make_chunk(current_blocks))
 
-    return chunks, index
+    return chunks
 
 
 def chunk_markdown(markdown: str, document_id: str) -> list[dict]:
     """Chunk a Markdown document into the chunk schema:
     {chunk_id, document, section_path, content, token_count}.
+
+    chunk_id is derived from the chunk's own content (not its position), so
+    re-chunking after an edit elsewhere in the document keeps the same id for
+    any chunk whose text didn't change.
     """
     sections = _parse_sections(markdown)
     if not sections:
         return []
 
     all_chunks: list[dict] = []
-    next_index = 0
     for section in sections:
         section_path = " > ".join(p for p in section.path if p) or document_id
-        chunks, next_index = _blocks_to_chunks(
-            document_id, section_path, section.blocks, next_index
-        )
-        all_chunks.extend(chunks)
+        all_chunks.extend(_blocks_to_chunks(document_id, section_path, section.blocks))
 
     return all_chunks

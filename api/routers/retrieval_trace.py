@@ -7,7 +7,11 @@ verified live against the graph in demo_coa_vector_vs_graph.py).
 
 Read-only and debug/demo-only: 404s once a thread/turn is no longer in the
 in-memory _retrieval_trace_history (e.g. the backend restarted since that
-answer was generated) rather than trying to reconstruct anything.
+answer was generated) rather than trying to reconstruct anything. Also 404s
+- the same as a missing thread, not a distinguishable 403 - when the
+requester_groups presented here don't match the ones the thread was
+created with (chat.thread_requester_groups_match), so a guessed thread_id
+can't be used to read another requester's retrieval trace.
 """
 
 from __future__ import annotations
@@ -15,13 +19,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from api import deps
-from api.routers.chat import _retrieval_trace_history
+from api.routers.chat import _retrieval_trace_history, thread_requester_groups_match
 from retrieval.retrieval_trace_builder import browser_query, compute_connectivity, graph_snapshot
 
 router = APIRouter()
 
 
-def _get_entry(thread_id: str, turn_index: int):
+def _get_entry(thread_id: str, turn_index: int, requester_groups: list[str]):
+    if not thread_requester_groups_match(thread_id, requester_groups):
+        raise HTTPException(
+            status_code=404,
+            detail="Retrieval trace data is no longer available for that turn - it may predate the current backend session.",
+        )
     entries = _retrieval_trace_history.get(thread_id)
     if entries is None or turn_index < 0 or turn_index >= len(entries):
         raise HTTPException(
@@ -32,8 +41,13 @@ def _get_entry(thread_id: str, turn_index: int):
 
 
 @router.get("/api/retrieval-trace/threads/{thread_id}/turns/{turn_index}")
-def get_retrieval_trace_turn(thread_id: str, turn_index: int, graph_provider=Depends(deps.get_graph_provider)) -> dict:
-    entry = _get_entry(thread_id, turn_index)
+def get_retrieval_trace_turn(
+    thread_id: str,
+    turn_index: int,
+    graph_provider=Depends(deps.get_graph_provider),
+    requester_groups: list[str] = Depends(deps.get_requester_groups),
+) -> dict:
+    entry = _get_entry(thread_id, turn_index, requester_groups)
 
     connectivity = compute_connectivity(
         graph_provider, entry.chunk_ids, entry.graph_expansion_hops, entry.page_link_hops
@@ -62,8 +76,13 @@ def get_retrieval_trace_turn(thread_id: str, turn_index: int, graph_provider=Dep
 
 
 @router.get("/api/retrieval-trace/threads/{thread_id}/turns/{turn_index}/graph")
-def get_retrieval_trace_graph(thread_id: str, turn_index: int, graph_provider=Depends(deps.get_graph_provider)) -> dict:
-    entry = _get_entry(thread_id, turn_index)
+def get_retrieval_trace_graph(
+    thread_id: str,
+    turn_index: int,
+    graph_provider=Depends(deps.get_graph_provider),
+    requester_groups: list[str] = Depends(deps.get_requester_groups),
+) -> dict:
+    entry = _get_entry(thread_id, turn_index, requester_groups)
 
     connectivity = compute_connectivity(
         graph_provider, entry.chunk_ids, entry.graph_expansion_hops, entry.page_link_hops

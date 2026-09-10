@@ -88,3 +88,20 @@ def get_agent() -> GraphRAGAgent:
 
 def get_current_reviewer(x_reviewer_name: str | None = Header(default=None)) -> str:
     return x_reviewer_name or "Reviewer"
+
+
+def get_requester_groups(x_requester_groups: str | None = Header(default=None)) -> list[str]:
+    """Placeholder identity source for the document-permission filtering
+    enforced in retrieval (Document.allowed_groups - see
+    Neo4jLoader.search_chunks/get_neighbors/get_linked_documents). Same stub
+    approach as get_current_reviewer() above and as AzureADAuthProvider's own
+    docstring: a real identity provider replaces this header with a verified
+    group claim without any retrieval/Cypher code changing.
+
+    A missing/empty header means the caller asserts no group membership -
+    deliberately default-deny, since with permission enforcement live an
+    empty group list can only ever see documents with allowed_groups unset,
+    never a restricted one."""
+    if not x_requester_groups:
+        return []
+    return [group.strip() for group in x_requester_groups.split(",") if group.strip()]

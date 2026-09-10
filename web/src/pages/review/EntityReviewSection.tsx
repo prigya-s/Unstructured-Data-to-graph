@@ -21,6 +21,7 @@ export default function EntityReviewSection() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set(["NEW", "PENDING_REVIEW"]));
   const [categoryFilter, setCategoryFilter] = useState<Set<string>>(new Set());
+  const [orphanedOnly, setOrphanedOnly] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = () => {
@@ -41,12 +42,19 @@ export default function EntityReviewSection() {
     [entities],
   );
 
+  const orphanedCount = useMemo(
+    () => (entities ?? []).filter((e) => e.orphaned_by_edit).length,
+    [entities],
+  );
+
   const filtered = useMemo(() => {
     if (!entities) return [];
     return entities.filter(
-      (e) => statusFilter.has(e.status) && (categoryFilter.size === 0 || categoryFilter.has(e.entity_type)),
+      (e) =>
+        (orphanedOnly ? e.orphaned_by_edit : statusFilter.has(e.status)) &&
+        (categoryFilter.size === 0 || categoryFilter.has(e.entity_type)),
     );
-  }, [entities, statusFilter, categoryFilter]);
+  }, [entities, statusFilter, categoryFilter, orphanedOnly]);
 
   const bulkApprovableIds = useMemo(
     () => filtered.filter((e) => !TERMINAL_STATUSES.has(e.status)).map((e) => e.id),
@@ -135,6 +143,17 @@ export default function EntityReviewSection() {
           </select>
         </div>
 
+        <div className="filter-group">
+          <label className="filter-checkbox">
+            <input
+              type="checkbox"
+              checked={orphanedOnly}
+              onChange={() => setOrphanedOnly((v) => !v)}
+            />
+            Orphaned by edit only ({orphanedCount})
+          </label>
+        </div>
+
         <div className="bulk-approve-panel">
           <button type="button" onClick={handleBulkApprove} disabled={bulkApprovableIds.length === 0 || busyId === "__bulk__"}>
             Approve all {bulkApprovableIds.length} filtered pending entities
@@ -193,9 +212,18 @@ function EntityRow({
     <details className="review-item">
       <summary>
         {entity.name} <span className="muted">({entity.entity_type})</span> — {entity.status}
+        {entity.orphaned_by_edit && <span className="badge badge--warning">Orphaned by edit</span>}
       </summary>
 
       <div className="review-item__body">
+        {entity.orphaned_by_edit && (
+          <p className="warning">
+            No remaining supporting evidence was found in the most recent ingestion run - the
+            source document(s) may have been edited or removed. Review and decide whether to
+            keep or reject this entity.
+          </p>
+        )}
+
         <div className="metric-grid">
           <MetricTile label="Confidence" value={entity.confidence_score.toFixed(2)} />
         </div>

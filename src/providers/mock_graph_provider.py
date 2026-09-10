@@ -88,7 +88,15 @@ class MockGraphProvider(GraphProvider):
             + len(self.page_links),
         }
 
-    def search_chunks(self, query_vector: list[float], top_k: int) -> list[dict]:
+    def _document_visible(self, document_id: str, requester_groups: list[str] | None) -> bool:
+        if requester_groups is None:
+            return True
+        allowed_groups = self.documents.get(document_id, {}).get("allowed_groups")
+        return not allowed_groups or any(g in requester_groups for g in allowed_groups)
+
+    def search_chunks(
+        self, query_vector: list[float], top_k: int, requester_groups: list[str] | None = None
+    ) -> list[dict]:
         results = [
             {
                 "chunk_id": chunk["id"],
@@ -98,6 +106,7 @@ class MockGraphProvider(GraphProvider):
                 "score": 1.0,
             }
             for chunk in self.chunks.values()
+            if self._document_visible(chunk.get("document"), requester_groups)
         ]
         return results[:top_k]
 
@@ -109,7 +118,20 @@ class MockGraphProvider(GraphProvider):
             if entity.get("source_chunk") in chunk_id_set
         ]
 
-    def get_neighbors(self, entity_ids: list[str], hops: int, limit: int) -> dict:
+    def _entity_visible(self, entity_id: str, requester_groups: list[str] | None) -> bool:
+        if requester_groups is None:
+            return True
+        entity = self.entities.get(entity_id)
+        if entity is None:
+            return False
+        chunk = self.chunks.get(entity.get("source_chunk"))
+        if chunk is None:
+            return False
+        return self._document_visible(chunk.get("document"), requester_groups)
+
+    def get_neighbors(
+        self, entity_ids: list[str], hops: int, limit: int, requester_groups: list[str] | None = None
+    ) -> dict:
         safe_hops = max(1, min(int(hops), _MAX_HOPS))
         safe_limit = max(1, min(int(limit), _MAX_NEIGHBOR_LIMIT))
         seed_ids = set(entity_ids)
@@ -128,20 +150,21 @@ class MockGraphProvider(GraphProvider):
                         source_entity = self.entities.get(a)
                         if target_entity is None or source_entity is None:
                             continue
-                        entities[b] = {
-                            "entity_id": target_entity["id"],
-                            "name": target_entity["name"],
-                            "entity_type": target_entity["type"],
-                        }
-                        paths.append(
-                            {
-                                "source_name": source_entity["name"],
-                                "relationship_types": [rel["relationship"]],
-                                "target_name": target_entity["name"],
-                            }
-                        )
                         next_frontier.add(b)
                         visited.add(b)
+                        if self._entity_visible(b, requester_groups):
+                            entities[b] = {
+                                "entity_id": target_entity["id"],
+                                "name": target_entity["name"],
+                                "entity_type": target_entity["type"],
+                            }
+                            paths.append(
+                                {
+                                    "source_name": source_entity["name"],
+                                    "relationship_types": [rel["relationship"]],
+                                    "target_name": target_entity["name"],
+                                }
+                            )
                         if len(entities) >= safe_limit:
                             break
                 if len(entities) >= safe_limit:
@@ -155,7 +178,9 @@ class MockGraphProvider(GraphProvider):
             "paths": paths[:safe_limit],
         }
 
-    def get_linked_documents(self, document_ids: list[str], hops: int, limit: int) -> dict:
+    def get_linked_documents(
+        self, document_ids: list[str], hops: int, limit: int, requester_groups: list[str] | None = None
+    ) -> dict:
         safe_hops = max(1, min(int(hops), _MAX_HOPS))
         safe_limit = max(1, min(int(limit), _MAX_NEIGHBOR_LIMIT))
         seed_ids = set(document_ids)
@@ -173,6 +198,10 @@ class MockGraphProvider(GraphProvider):
                     target_doc = self.documents.get(target)
                     if source_doc is None or target_doc is None:
                         continue
+                    next_frontier.add(target)
+                    visited.add(target)
+                    if not self._document_visible(target, requester_groups):
+                        continue
                     documents[target] = {
                         "document_id": target_doc["id"],
                         "name": target_doc["name"],
@@ -184,8 +213,6 @@ class MockGraphProvider(GraphProvider):
                             "target_name": target_doc["name"],
                         }
                     )
-                    next_frontier.add(target)
-                    visited.add(target)
                     if len(documents) >= safe_limit:
                         break
             frontier = next_frontier

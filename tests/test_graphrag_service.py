@@ -36,20 +36,20 @@ class FakeGraphProvider:
         self.get_neighbors_calls: list[tuple] = []
         self.get_linked_documents_calls: list[tuple] = []
 
-    def search_chunks(self, query_vector, top_k):
-        self.search_chunks_calls.append((query_vector, top_k))
+    def search_chunks(self, query_vector, top_k, requester_groups=None):
+        self.search_chunks_calls.append((query_vector, top_k, requester_groups))
         return self._chunks
 
     def get_mentioned_entities(self, chunk_ids):
         self.get_mentioned_entities_calls.append(list(chunk_ids))
         return self._entities
 
-    def get_neighbors(self, entity_ids, hops, limit):
-        self.get_neighbors_calls.append((list(entity_ids), hops, limit))
+    def get_neighbors(self, entity_ids, hops, limit, requester_groups=None):
+        self.get_neighbors_calls.append((list(entity_ids), hops, limit, requester_groups))
         return self._neighbors
 
-    def get_linked_documents(self, document_ids, hops, limit):
-        self.get_linked_documents_calls.append((list(document_ids), hops, limit))
+    def get_linked_documents(self, document_ids, hops, limit, requester_groups=None):
+        self.get_linked_documents_calls.append((list(document_ids), hops, limit, requester_groups))
         return self._linked_documents
 
 
@@ -75,7 +75,7 @@ def test_retrieve_context_embeds_query_and_searches_chunks():
     result = retrieve_context("what is billing?", embedding_provider, graph_provider, config)
 
     assert embedding_provider.embedded_queries == ["what is billing?"]
-    assert graph_provider.search_chunks_calls == [([0.1, 0.2], 5)]
+    assert graph_provider.search_chunks_calls == [([0.1, 0.2], 5, None)]
     assert result.chunks == graph_provider._chunks
     assert result.citations == [
         {"chunk_id": "c1", "document_id": "d1", "document_name": "Billing Runbook"}
@@ -120,12 +120,29 @@ def test_retrieve_context_expands_to_neighbors_and_formats_graph_paths():
 
     result = retrieve_context("q", embedding_provider, graph_provider, config)
 
-    assert graph_provider.get_neighbors_calls == [(["e1"], 2, 10)]
+    assert graph_provider.get_neighbors_calls == [(["e1"], 2, 10, None)]
     assert result.entities == [
         {"entity_id": "e1", "name": "Billing Service", "entity_type": "Service"},
         {"entity_id": "e2", "name": "Payment Gateway", "entity_type": "Service"},
     ]
     assert result.graph_paths == ["Billing Service USES Payment Gateway"]
+
+
+def test_retrieve_context_threads_requester_groups_to_every_graph_provider_call():
+    embedding_provider = FakeEmbeddingProvider()
+    graph_provider = FakeGraphProvider(
+        chunks=[
+            {"chunk_id": "c1", "document_id": "d1", "document_name": "Doc 1", "content": "a", "score": 0.9}
+        ],
+        entities=[{"entity_id": "e1", "name": "Billing Service", "entity_type": "Service"}],
+    )
+    config = _config()
+
+    retrieve_context("q", embedding_provider, graph_provider, config, requester_groups=["finance"])
+
+    assert graph_provider.search_chunks_calls[0][2] == ["finance"]
+    assert graph_provider.get_neighbors_calls[0][3] == ["finance"]
+    assert graph_provider.get_linked_documents_calls[0][3] == ["finance"]
 
 
 def test_retrieve_context_returns_empty_result_when_no_chunks_found():
@@ -175,7 +192,7 @@ def test_retrieve_context_looks_up_linked_documents_and_formats_next_steps():
 
     result = retrieve_context("q", embedding_provider, graph_provider, config)
 
-    assert graph_provider.get_linked_documents_calls == [(["d1"], 3, 15)]
+    assert graph_provider.get_linked_documents_calls == [(["d1"], 3, 15, None)]
     assert result.next_steps == ["If A child: see Q33"]
 
 

@@ -8,7 +8,9 @@ this is a static dump on disk).
 Each page JSON carries: page_id, title, space_key, version, content_hash,
 sanitized_text, metadata{has_images,has_tables,has_code_blocks,link_count,
 heading_count,paragraph_count,headings:[{level,text}]}, stored_at,
-is_deleted.
+is_deleted, restrictions{groups:[...]} (optional - Confluence's page/space
+view-restriction groups; absent or {} means the export tool didn't capture
+restriction data, not that the page is unrestricted).
 """
 
 from __future__ import annotations
@@ -74,6 +76,7 @@ class ConfluenceExportSource(DocumentSource):
                     "space_key": data.get("space_key"),
                     "version": data.get("version"),
                     "content_hash": data.get("content_hash"),
+                    "allowed_groups": (data.get("restrictions") or {}).get("groups"),
                 }
             )
         return documents

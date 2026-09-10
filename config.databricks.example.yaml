@@ -57,5 +57,8 @@ secrets:
 auth:
   provider: azure_ad  # validates the identity Databricks Apps / an Azure AD auth proxy injects
 
+permissions:
+  local_folder_default_group: internal  # unused in this mode unless document_source.provider: local_folder is selected
+
 observability:
   log_dir: /Volumes/kg_catalog/kg_schema/logs

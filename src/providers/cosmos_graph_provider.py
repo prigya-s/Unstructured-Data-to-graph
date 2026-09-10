@@ -52,16 +52,22 @@ class CosmosGraphProvider(GraphProvider):
     def build_production_graph(self, graph: dict) -> dict:
         raise NotImplementedError(self._MSG)
 
-    def search_chunks(self, query_vector: list[float], top_k: int) -> list[dict]:
+    def search_chunks(
+        self, query_vector: list[float], top_k: int, requester_groups: list[str] | None = None
+    ) -> list[dict]:
         raise NotImplementedError(self._MSG)
 
     def get_mentioned_entities(self, chunk_ids: list[str]) -> list[dict]:
         raise NotImplementedError(self._MSG)
 
-    def get_neighbors(self, entity_ids: list[str], hops: int, limit: int) -> dict:
+    def get_neighbors(
+        self, entity_ids: list[str], hops: int, limit: int, requester_groups: list[str] | None = None
+    ) -> dict:
         raise NotImplementedError(self._MSG)
 
-    def get_linked_documents(self, document_ids: list[str], hops: int, limit: int) -> dict:
+    def get_linked_documents(
+        self, document_ids: list[str], hops: int, limit: int, requester_groups: list[str] | None = None
+    ) -> dict:
         raise NotImplementedError(self._MSG)
 
     def query_graph(self, cypher: str, params: dict | None = None) -> list[dict]:

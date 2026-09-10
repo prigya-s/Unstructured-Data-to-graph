@@ -215,6 +215,7 @@ class Neo4jLoader:
             d.version = row.version,
             d.content_hash = row.content_hash,
             d.parent_page_id = row.parent_page_id,
+            d.allowed_groups = row.allowed_groups,
             d.uri = $ns + row.id
         SET d:Resource
         """
@@ -233,6 +234,38 @@ class Neo4jLoader:
         SET c:Resource
         """
         return self._run_batched(session, query, chunks, ns=str(CHUNK_NS))
+
+    def prune_stale_chunks(self, session, chunks: list[dict]) -> int:
+        """Deletes Chunk nodes that belong to one of this load's documents
+        but no longer appear in its chunk list - the counterpart to
+        load_chunks' MERGE, which only ever adds/updates a chunk and never
+        removes one whose text changed or disappeared on re-ingestion (e.g.
+        a mid-document edit that shifts/removes a chunk boundary). Scoped to
+        documents present in this load so it never touches a document that
+        simply wasn't part of this run."""
+        document_ids = list({chunk["document"] for chunk in chunks})
+        current_chunk_ids = [chunk["id"] for chunk in chunks]
+        start = time.perf_counter()
+        result = session.execute_write(
+            lambda tx: list(
+                tx.run(
+                    """
+                    MATCH (d:Document)-[:HAS_CHUNK]->(c:Chunk)
+                    WHERE d.id IN $document_ids AND NOT c.id IN $current_chunk_ids
+                    DETACH DELETE c
+                    RETURN count(c) AS deleted
+                    """,
+                    document_ids=document_ids,
+                    current_chunk_ids=current_chunk_ids,
+                )
+            )
+        )
+        deleted = result[0]["deleted"] if result else 0
+        logger.info(
+            "graph_operation operation=prune_stale_chunks deleted=%d duration_ms=%d",
+            deleted, int((time.perf_counter() - start) * 1000),
+        )
+        return deleted
 
     def create_vector_index(self, session, dimensions: int) -> None:
         """Idempotent - safe to call on every load_graph(). Only meaningful
@@ -401,19 +434,24 @@ class Neo4jLoader:
             )
         return stats
 
-    def search_chunks(self, session, query_vector: list[float], top_k: int) -> list[dict]:
+    def search_chunks(
+        self, session, query_vector: list[float], top_k: int, requester_groups: list[str] | None = None
+    ) -> list[dict]:
         result = self._run_read(
             session,
             """
             CALL db.index.vector.queryNodes('chunk_embedding', $top_k, $query_vector)
             YIELD node, score
             MATCH (d:Document {id: node.document})
+            WHERE $requester_groups IS NULL OR d.allowed_groups IS NULL
+                  OR any(g IN d.allowed_groups WHERE g IN $requester_groups)
             RETURN node.id AS chunk_id, node.content AS content,
                    node.document AS document_id, d.name AS document_name, score
             ORDER BY score DESC
             """,
             top_k=top_k,
             query_vector=query_vector,
+            requester_groups=requester_groups,
         )
         return [dict(record) for record in result]
 
@@ -429,7 +467,14 @@ class Neo4jLoader:
         )
         return [dict(record) for record in result]
 
-    def get_neighbors(self, session, entity_ids: list[str], hops: int, limit: int) -> dict:
+    def get_neighbors(
+        self,
+        session,
+        entity_ids: list[str],
+        hops: int,
+        limit: int,
+        requester_groups: list[str] | None = None,
+    ) -> dict:
         safe_hops = max(1, min(int(hops), _MAX_HOPS))
         safe_limit = max(1, min(int(limit), _MAX_NEIGHBOR_LIMIT))
         result = self._run_read(
@@ -437,6 +482,11 @@ class Neo4jLoader:
             """
             MATCH (e:Entity)-[rels*1..%d]-(n:Entity)
             WHERE e.id IN $entity_ids AND NOT n.id IN $entity_ids
+              AND ($requester_groups IS NULL OR EXISTS {
+                    MATCH (n)<-[:MENTIONS]-(:Chunk)<-[:HAS_CHUNK]-(d:Document)
+                    WHERE d.allowed_groups IS NULL
+                          OR any(g IN d.allowed_groups WHERE g IN $requester_groups)
+                  })
             RETURN DISTINCT n.id AS entity_id, n.name AS name, n.type AS entity_type,
                    e.name AS source_name,
                    [rel IN rels | type(rel)] AS relationship_types
@@ -445,6 +495,7 @@ class Neo4jLoader:
             % safe_hops,
             entity_ids=entity_ids,
             limit=safe_limit,
+            requester_groups=requester_groups,
         )
         entities: dict[str, dict] = {}
         paths: list[dict] = []
@@ -464,7 +515,14 @@ class Neo4jLoader:
             )
         return {"entities": list(entities.values()), "paths": paths}
 
-    def get_linked_documents(self, session, document_ids: list[str], hops: int, limit: int) -> dict:
+    def get_linked_documents(
+        self,
+        session,
+        document_ids: list[str],
+        hops: int,
+        limit: int,
+        requester_groups: list[str] | None = None,
+    ) -> dict:
         """Document-level counterpart to get_neighbors: forward-only
         traversal of LEADS_TO edges from the given documents (the pages a
         chunk came from) to the pages they lead to next. Forward-only
@@ -478,6 +536,8 @@ class Neo4jLoader:
             """
             MATCH (d:Document)-[rels:LEADS_TO*1..%d]->(n:Document)
             WHERE d.id IN $document_ids AND NOT n.id IN $document_ids
+              AND ($requester_groups IS NULL OR n.allowed_groups IS NULL
+                   OR any(g IN n.allowed_groups WHERE g IN $requester_groups))
             RETURN DISTINCT n.id AS document_id, n.name AS name,
                    d.name AS source_name,
                    [rel IN rels | rel.answer_label] AS answer_labels
@@ -486,6 +546,7 @@ class Neo4jLoader:
             % safe_hops,
             document_ids=document_ids,
             limit=safe_limit,
+            requester_groups=requester_groups,
         )
         documents: dict[str, dict] = {}
         paths: list[dict] = []
@@ -521,6 +582,7 @@ class Neo4jLoader:
         with self._driver.session(database=self.database) as session:
             stats["documents_loaded"] = self.load_documents(session, graph["nodes"]["documents"])
             stats["chunks_loaded"] = self.load_chunks(session, graph["nodes"]["chunks"])
+            stats["chunks_pruned"] = self.prune_stale_chunks(session, graph["nodes"]["chunks"])
 
             embedded_chunk = next(
                 (c for c in graph["nodes"]["chunks"] if c.get("embedding")), None
